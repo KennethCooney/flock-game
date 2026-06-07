@@ -1,0 +1,2558 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Flock</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<style>
+  :root {
+    --ink:#2b2b2b; --cream:#f4f1ea; --paper:#fffaf0; --plum:#a2457e; --teal:#069494;
+    --orange:#FF8243; --pink:#FFC0CB; --yellow:#FCE883; --gold:#E2A32D;
+    --mute:#8a8478; --line:#d8d1c2;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; }
+  body {
+    font-family: "Baloo 2", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: #f4f1ea;
+    color: #2b2b2b;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  h1 { font-size: 2.2rem; font-weight: 800; letter-spacing: -0.5px; color: var(--ink); }
+  .screen { width: 100%; max-width: 820px; padding: 24px; display: none; flex-direction: column; align-items: center; gap: 20px; }
+  .screen.active { display: flex; }
+  /* iPad-first: gameplay screens fill the viewport and center their stack
+     vertically so boards use the whole table instead of clustering at the top */
+  #boardScreen.active, #raceScreen.active, #gameScreen.active {
+    min-height: 100dvh; justify-content: safe center;
+  }
+  /* Board view uses the full table; don't clamp it to the 820px setup width */
+  #boardScreen { max-width: none; padding: 16px; gap: 14px; }
+
+  /* Setup */
+  .tagline { color: var(--mute); font-size: 1.05rem; font-weight: 700; text-align: center; }
+  .setup-section { width: 100%; max-width: 480px; display: flex; flex-direction: column; gap: 10px; }
+  .setup-label { font-weight: 700; font-size: 0.95rem; text-transform: uppercase; letter-spacing: 1px; color: #555; }
+  .seg { display: flex; gap: 8px; }
+  .seg button {
+    flex: 1; padding: 14px; font-size: 1.1rem; font-weight: 800; font-family: inherit;
+    border: 2.5px solid var(--ink); border-radius: 14px; background: var(--paper); cursor: pointer;
+  }
+  .seg button.sel { background: var(--ink); color: #fff; }
+  .seg button:disabled { opacity: 0.35; cursor: default; }
+  .team-name-input {
+    padding: 14px; font-size: 1.1rem; font-family: inherit; font-weight: 700;
+    border: 2.5px solid var(--line); border-radius: 14px; width: 100%; background: var(--paper);
+  }
+  .big-btn {
+    padding: 16px 36px; font-size: 1.2rem; font-weight: 800; color: #fff;
+    background: var(--plum); border: 2.5px solid var(--ink); border-radius: 18px;
+    box-shadow: 0 5px 0 #6f2f57; cursor: pointer;
+  }
+  .big-btn:active { transform: translateY(3px); box-shadow: 0 2px 0 #6f2f57; }
+  .btn-daily { background: var(--teal); box-shadow: 0 5px 0 #04686a; }
+  .btn-daily:active { box-shadow: 0 2px 0 #04686a; }
+  .btn-levels { background: var(--orange); box-shadow: 0 5px 0 #c85f1f; }
+  .btn-levels:active { box-shadow: 0 2px 0 #c85f1f; }
+  .btn-multi { background: var(--plum); box-shadow: 0 5px 0 #6f2f57; }
+
+  /* Scoreboard */
+  .scoreboard { display: flex; gap: 12px; width: 100%; justify-content: center; }
+  .team-card {
+    flex: 1; max-width: 220px; padding: 12px 16px; border-radius: 16px;
+    background: var(--paper); border: 2.5px solid var(--line); text-align: center;
+    transition: border-color 0.2s, transform 0.2s;
+  }
+  .team-card.current { border-color: var(--ink); transform: scale(1.05); box-shadow: 0 4px 0 var(--line); }
+  .team-card .tname { font-weight: 700; font-size: 1.05rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .team-card .tscore { font-size: 1.8rem; font-weight: 800; }
+  .turn-banner { font-size: 1.2rem; font-weight: 600; min-height: 1.6em; text-align: center; }
+
+  /* Board */
+  .board { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; width: 100%; }
+  .tile {
+    aspect-ratio: 2 / 1; display: flex; align-items: center; justify-content: center;
+    background: var(--paper); border-radius: 13px; font-weight: 800;
+    font-size: clamp(0.75rem, 2.4vw, 1.15rem); text-transform: uppercase;
+    cursor: pointer; border: 2.5px solid var(--ink); text-align: center; padding: 4px;
+    box-shadow: 0 2px 0 var(--line); transition: transform 0.1s, box-shadow 0.1s;
+  }
+  .tile.sel { background: var(--ink); color: #fff; transform: translateY(-2px); box-shadow: 0 4px 0 var(--plum); }
+  .solved-row {
+    grid-column: 1 / -1; border-radius: 14px; padding: 12px; text-align: center; color: #fff;
+    border: 2.5px solid var(--ink);
+  }
+  .pop-in { animation: pop 0.4s ease; }
+  .solved-row .cat { font-weight: 800; text-transform: uppercase; letter-spacing: 1px; }
+  .solved-row .words { font-size: 0.95rem; opacity: 0.95; }
+  .solved-row .by { font-size: 0.8rem; opacity: 0.85; margin-top: 2px; }
+  @keyframes pop { 0% { transform: scale(0.85); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+  @keyframes shake { 0%,100% { transform: translateX(0); } 25% { transform: translateX(-8px); } 75% { transform: translateX(8px); } }
+  .board.shake { animation: shake 0.3s ease; }
+
+  .controls { display: flex; gap: 10px; }
+  .ctrl-btn {
+    padding: 13px 22px; font-size: 1.05rem; font-weight: 800; border-radius: 999px;
+    border: 2.5px solid var(--ink); background: var(--paper); color: var(--ink);
+    box-shadow: 0 4px 0 var(--line); cursor: pointer; font-family: inherit;
+  }
+  .ctrl-btn.primary { background: var(--plum); color: #fff; box-shadow: 0 4px 0 #6f2f57; }
+  .ctrl-btn:active { transform: translateY(2px); box-shadow: 0 2px 0 var(--line); }
+  .ctrl-btn.primary:active { box-shadow: 0 2px 0 #6f2f57; }
+  .ctrl-btn:disabled { opacity: 0.35; cursor: default; }
+  /* Level grid */
+  .level-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 22px 10px; width: 100%; justify-items: center; }
+  .level-cell {
+    aspect-ratio: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    background: #fff; border: 2px solid #e0dcd2; border-radius: 10px; cursor: pointer;
+    font-weight: 700; font-size: clamp(0.7rem, 1.8vw, 1rem);
+  }
+  .level-cell.done { background: #069494; border-color: #069494; color: #fff; }
+  .level-cell.started { border-color: #069494; color: #069494; }
+  .level-cell .chk { font-size: 0.65em; line-height: 1; }
+  .pg-label { font-weight: 700; align-self: center; min-width: 90px; text-align: center; }
+  .daily-status { color: #777; font-size: 0.95rem; min-height: 1.2em; margin-top: -14px; }
+  .rivalry { color: #777; font-size: 0.95rem; text-align: center; }
+
+  .menu-btn {
+    padding: 9px 20px; font-size: 0.95rem; font-weight: 700; border-radius: 999px;
+    border: 2.5px solid var(--line); background: var(--paper); color: var(--mute);
+    cursor: pointer; font-family: inherit;
+  }
+  .menu-btn:active { transform: translateY(1px); }
+
+  /* Race mode */
+  #raceScreen { max-width: 1280px; flex: 1; }
+  .race-row { display: flex; gap: 16px; width: 100%; align-items: flex-start; }
+  .race-panel { flex: 1; position: relative; display: flex; flex-direction: column; gap: 8px; }
+  .race-team { font-weight: 800; font-size: 1.15rem; display: flex; align-items: center; justify-content: center; gap: 10px; }
+  .score-pill {
+    background: #2b2b2b; color: #fff; padding: 4px 14px; border-radius: 12px;
+    font-weight: 800; font-size: 0.95rem;
+  }
+  .race-panel .board { gap: 6px; }
+  .race-panel .tile { font-size: clamp(0.55rem, 1.5vw, 0.95rem); }
+  .race-panel .solved-row { padding: 8px; }
+  /* Board game track: square loop on a dark board, Pictionary-style pastels */
+  .track {
+    display: grid; gap: 5px;
+    width: 100%; max-width: min(96vmin, 96vh, 1040px);
+    background: #232220; padding: 16px; border-radius: 16px;
+  }
+  /* Phone: tall serpentine board that fills the screen, spinner sits below it */
+  .track.snake {
+    max-width: 100%; gap: 7px; padding: 12px;
+    height: 56vh; grid-auto-rows: minmax(0, 1fr);
+  }
+  .track.snake .cell { aspect-ratio: auto; }
+  #wheelArea { display: flex; flex-direction: column; align-items: center; }
+
+  /* New winding board ("The Long Way Home") */
+  .board-head, .board-foot, .board-svg-wrap { width: 100%; max-width: min(96vw, 760px); }
+  .board-head { display: flex; align-items: center; justify-content: space-between; padding: 0 4px; }
+  .board-wordmark { font-weight: 800; font-size: 2rem; color: var(--plum); line-height: 1; letter-spacing: -0.01em; }
+  .round-badge { background: var(--yellow); color: var(--ink); font-weight: 800; font-size: 0.8rem; padding: 4px 12px; border-radius: 999px; border: 2.5px solid var(--ink); }
+  .board-svg-wrap { flex: 1; display: flex; align-items: center; justify-content: center; min-height: 0; }
+  .board-svg-wrap svg { width: 100%; height: auto; max-height: 100%; }
+  .board-foot { display: flex; align-items: center; justify-content: space-between; gap: 16px; border-top: 2px dashed var(--line); padding-top: 12px; }
+  .board-foot-left { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+  .board-foot-left .turn-banner { text-align: left; min-height: 0; font-size: 1.05rem; font-weight: 800; }
+  .spinner { cursor: pointer; text-align: center; user-select: none; }
+  .spinner .spin-label { font-weight: 700; font-size: 0.78rem; color: var(--ink); margin-top: -2px; min-height: 1em; }
+  .spinner.armed { animation: pressme 0.9s ease-in-out infinite; }
+  #spinNeedle { transition: transform 0s; }
+
+  /* Full-height screens with internal layout */
+  #homeScreen.active, #dailyScreen.active, #levelsScreen.active {
+    min-height: 100dvh; justify-content: flex-start;
+  }
+
+  /* Shared top bar (Daily / Levels / Gameplay) */
+  .topbar { display: flex; align-items: center; width: 100%; max-width: 480px; padding: 4px 4px 2px; gap: 6px; }
+  .topbar-title { flex: 1; text-align: center; font-weight: 800; font-size: 1.15rem; }
+  .topbar-right { min-width: 40px; display: flex; justify-content: flex-end; }
+  .iconbtn {
+    width: 40px; height: 40px; border-radius: 999px; border: none; background: transparent;
+    font-size: 1.6rem; font-weight: 800; color: var(--ink); cursor: pointer; line-height: 1; font-family: inherit;
+  }
+  .count-pill { font-weight: 800; font-size: 0.78rem; color: #fff; background: var(--plum); border: 2px solid var(--ink); border-radius: 999px; padding: 3px 10px; }
+
+  /* Main menu */
+  .menu-wrap { display: flex; flex-direction: column; flex: 1; width: 100%; max-width: 440px; padding: 8px 18px 24px; }
+  .menu-top { text-align: center; margin-top: 20px; }
+  .wordmark { font-weight: 800; font-size: clamp(3.2rem, 17vw, 4.6rem); color: var(--plum); line-height: 0.9; letter-spacing: -0.02em; }
+  .bird-wire { margin-top: 14px; width: 100%; }
+  .menu-actions { display: flex; flex-direction: column; gap: 15px; margin-top: auto; }
+  .menu-card {
+    display: flex; align-items: center; gap: 13px; width: 100%; text-align: left; font-family: inherit;
+    background: var(--paper); color: var(--ink); border: 2.5px solid var(--ink);
+    border-radius: 18px; box-shadow: 0 5px 0 var(--line); padding: 14px 18px; cursor: pointer;
+  }
+  .menu-card:active { transform: translateY(3px); box-shadow: 0 2px 0 var(--line); }
+  .menu-card.card-daily { background: var(--plum); color: #fff; box-shadow: 0 5px 0 #6f2f57; }
+  .menu-card.card-daily:active { box-shadow: 0 2px 0 #6f2f57; }
+  .menu-card-icon { width: 38px; height: 38px; display: grid; place-items: center; flex: 0 0 auto; }
+  .menu-card-main { flex: 1; display: flex; flex-direction: column; }
+  .menu-card-title { font-weight: 800; font-size: 1.25rem; }
+  .menu-card-sub { font-weight: 600; font-size: 0.8rem; opacity: 0.85; }
+  .menu-card-arrow { font-size: 1.4rem; font-weight: 800; }
+  .menu-card-tag { font-weight: 700; font-size: 0.8rem; color: var(--mute); }
+  .menu-card-badge { font-weight: 800; font-size: 0.72rem; color: #fff; background: var(--orange); border: 2px solid var(--ink); border-radius: 999px; padding: 2px 10px; }
+  .menu-streak { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 18px; font-weight: 700; font-size: 0.9rem; color: var(--ink); min-height: 1.2em; }
+  .menu-streak .dot { color: var(--line); }
+
+  /* Daily landing */
+  .daily-wrap { display: flex; flex-direction: column; flex: 1; width: 100%; max-width: 440px; padding: 10px 26px 26px; }
+  .daily-date { text-align: center; margin-top: 10px; }
+  .daily-dow { font-weight: 700; font-size: 0.85rem; color: var(--mute); letter-spacing: 0.04em; }
+  .daily-md { font-weight: 800; font-size: 2.4rem; line-height: 1.05; }
+  .daily-no { font-weight: 700; font-size: 0.85rem; color: var(--plum); margin-top: 2px; }
+  .streak-card { margin-top: 22px; background: var(--paper); border: 2.5px solid var(--ink); border-radius: 20px; padding: 16px; box-shadow: 0 5px 0 var(--line); }
+  .streak-head { display: flex; align-items: center; justify-content: center; gap: 8px; font-weight: 800; font-size: 1.1rem; }
+  .streak-days { display: flex; justify-content: space-between; margin-top: 14px; }
+  .streak-day { text-align: center; }
+  .streak-day .pip { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; border: 2.5px solid var(--ink); font-weight: 800; font-size: 0.85rem; }
+  .streak-day .pip.on { background: var(--orange); color: #fff; }
+  .streak-day .pip.off { background: #fff; color: var(--line); }
+  .streak-day .lbl { font-size: 0.7rem; font-weight: 700; color: var(--mute); margin-top: 5px; }
+  .daily-mid { flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; color: var(--mute); font-weight: 700; font-size: 0.9rem; }
+  .daily-owl { display: flex; justify-content: center; margin-bottom: -6px; position: relative; z-index: 1; }
+  .daily-foot { text-align: center; font-weight: 700; font-size: 0.78rem; color: var(--mute); margin-top: 12px; }
+
+  /* Levels */
+  .levels-wrap { width: 100%; max-width: 480px; flex: 1; overflow-y: auto; padding: 14px 24px 6px; }
+  .level-pager { display: flex; align-items: center; gap: 14px; padding: 6px 0 16px; }
+  .lv-node { display: grid; place-items: center; position: relative; }
+  .lv-circle { width: 54px; height: 54px; border-radius: 50%; border: 2.5px solid var(--ink); display: grid; place-items: center; font-weight: 800; font-size: 1.15rem; cursor: pointer; }
+  .lv-circle.current { background: var(--yellow); box-shadow: 0 4px 0 var(--gold); border-width: 3px; }
+  .lv-circle.done { box-shadow: 0 3px 0 rgba(0,0,0,0.18); }
+  .lv-circle.todo { background: var(--paper); color: var(--mute); box-shadow: 0 3px 0 var(--line); }
+  .lv-star { position: absolute; top: -6px; right: -6px; font-size: 0.85rem; }
+  .lv-owl { position: absolute; top: -30px; left: 50%; transform: translateX(-50%); }
+
+  /* Gameplay */
+  .game-wrap { display: flex; flex-direction: column; flex: 1; width: 100%; max-width: 560px; padding: 4px 16px 16px; }
+  .game-score { font-weight: 800; font-size: 1.2rem; }
+  .game-sub { text-align: center; font-weight: 700; font-size: 0.85rem; color: var(--mute); padding: 2px 0 8px; }
+  #gameScreen.active { min-height: 100dvh; justify-content: flex-start; }
+  .game-wrap .board { margin-top: 2px; }
+  .game-wrap .controls { margin-top: 14px; justify-content: center; }
+  .ctrl-icon { display: inline-flex; align-items: center; justify-content: center; }
+  .cell {
+    aspect-ratio: 1; border-radius: 5px;
+    display: flex; align-items: center; justify-content: center; position: relative;
+    font-size: clamp(0.7rem, 1.6vmin, 0.95rem); font-weight: 700; color: rgba(255,255,255,0.7);
+  }
+  .cell.endcap { background: #f7f4ec; color: #2b2b2b; font-size: clamp(0.5rem, 1.2vmin, 0.62rem); letter-spacing: 0.5px; }
+  .cell.special { font-size: clamp(1rem, 2.2vmin, 1.3rem); color: rgba(255,255,255,0.85); }
+  .cell .dir { font-size: clamp(0.9rem, 3.4vmin, 1.6rem); font-weight: 700; opacity: 0.45; line-height: 1; pointer-events: none; }
+  .cell .pawns { position: absolute; inset: 0; display: flex; flex-wrap: wrap; align-items: center; align-content: center; justify-content: center; gap: 3px; }
+  /* Spinner sits in the hollow center of the loop; the grid span is set in JS
+     from GRID_N so the dock always fills the interior */
+  .board-center {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+  }
+  .spin-pointer { color: #f7f4ec; font-size: 1.3rem; margin-bottom: -8px; z-index: 2; text-shadow: 0 1px 2px rgba(0,0,0,0.5); }
+  .wheel-wrap { width: min(54%, 250px); }
+  .wheel-wrap.armed { cursor: pointer; }
+  @keyframes pressme {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.12); }
+  }
+  .hub.armed { animation: pressme 0.9s ease-in-out infinite; }
+  .wheel {
+    width: 100%; aspect-ratio: 1; border-radius: 50%; position: relative;
+    border: 4px solid #1c1c1c; box-shadow: 0 3px 10px rgba(0,0,0,0.45);
+  }
+  .wheel.spinning { transition: transform 3.2s cubic-bezier(0.12, 0.8, 0.2, 1); }
+  .wheel.armed { cursor: pointer; box-shadow: 0 0 0 6px rgba(247,244,236,0.22), 0 3px 10px rgba(0,0,0,0.45); }
+  .wheel .num {
+    position: absolute; left: 50%; top: 50%; font-weight: 800; font-size: 1rem; color: rgba(255,255,255,0.85);
+  }
+  .wheel .hub {
+    position: absolute; inset: 33%; border-radius: 50%; background: #232220; color: #f7f4ec;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.6rem; font-weight: 800; letter-spacing: 2px; text-indent: 2px;
+  }
+  .legend { display: flex; gap: 12px; font-weight: 700; font-size: 0.85rem; align-items: center; flex-wrap: wrap; }
+  .legend-owl { display: inline-flex; }
+  .countdown {
+    position: fixed; inset: 0; background: rgba(244,241,234,0.97); z-index: 30;
+    display: none; align-items: center; justify-content: center;
+  }
+  .countdown.show { display: flex; }
+  #countNum { font-size: 7rem; font-weight: 800; animation: pop 0.4s ease; }
+  .bonus-words { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 6px; }
+  .iq-wheel {
+    width: 180px; aspect-ratio: 1; border-radius: 50%; position: relative;
+    border: 3px solid #2b2b2b; margin: 4px auto;
+  }
+  .iq-wheel .num {
+    position: absolute; left: 50%; top: 50%;
+    font-weight: 800; font-size: 1.05rem; color: #2b2b2b;
+  }
+  .iq-wheel .num.missing { color: #d64545; }
+  .pawn {
+    width: clamp(13px, 3.2vmin, 26px); height: clamp(13px, 3.2vmin, 26px);
+    border-radius: 50%; border: 2px solid;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.45); flex-shrink: 0;
+  }
+  .legend .pawn { width: 22px; height: 22px; }
+  .lock-overlay {
+    position: absolute; inset: 0; background: rgba(244,241,234,0.9); z-index: 5;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    font-weight: 800; font-size: 1.2rem; border-radius: 12px; text-align: center; gap: 4px;
+  }
+  .lock-overlay .count { font-size: 2.4rem; }
+
+  /* Face-off: 2 teams, iPad flat on table, top board rotated toward the player across */
+  .race-row.face-off { flex-direction: column; align-items: center; gap: 24px; flex: 1; justify-content: space-between; }
+  /* Content-sized, not flex-grown, so space-between pushes each board to its
+     own edge of the table instead of bunching them in the middle */
+  .race-row.face-off .race-panel { flex: 0 0 auto; width: 100%; max-width: 620px; }
+  .race-panel.flipped { transform: rotate(180deg); }
+
+  /* Desktop (mouse, not a tablet on a table): the rotate-toward-the-player table
+     layout doesn't apply. Show both boards upright and centered with a normal gap
+     so two stacked boards never get clipped on short windows. */
+  @media (pointer: fine) and (min-width: 1000px) {
+    .race-row.face-off { flex: 0 1 auto; justify-content: center; gap: 28px; }
+    .race-panel.flipped { transform: none; }
+  }
+
+  /* Card-table face-off for 3-4 teams: upside-down board across the top,
+     upright board across the bottom, and the left/right teams' boards turned
+     sideways in the middle band between them. 3 teams leaves the right blank. */
+  .race-row.quad {
+    --main: min(60dvw, 520px);                              /* top & bottom board width */
+    --side: min(560px, calc(100dvh - var(--main) - 300px)); /* sideways board width */
+    flex-direction: column; align-items: center; justify-content: space-between;
+    flex: 1; width: 100%; gap: 8px;
+  }
+  .race-row.quad > .race-panel { flex: 0 0 auto; width: var(--main); }
+  .quad-mid {
+    display: flex; flex: 1; width: 100%;
+    align-items: center; justify-content: space-between;
+  }
+  /* Each sideways board sits in a wrapper pre-sized to its rotated footprint,
+     so flex lays out the visual box, not the unrotated one */
+  .quad-side { position: relative; width: calc(var(--side) / 2 + 95px); height: var(--side); }
+  .quad-side .race-panel {
+    position: absolute; top: 50%; left: 50%; width: var(--side);
+    transform: translate(-50%, -50%) rotate(90deg);   /* faces the left player */
+  }
+  .quad-side.seat-right .race-panel {
+    transform: translate(-50%, -50%) rotate(-90deg);  /* faces the right player */
+  }
+  .found-band { font-weight: 800; letter-spacing: 1px; }
+  .skip-btn {
+    align-self: center; padding: 10px 28px; font-size: 0.95rem; font-weight: 700;
+    border: 2px solid #2b2b2b; border-radius: 12px; background: #fff; cursor: pointer;
+  }
+  .skip-btn.on { background: #2b2b2b; color: #fff; }
+
+  .modal-bg {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 20;
+    display: none; align-items: center; justify-content: center;
+  }
+  .modal-bg.show { display: flex; }
+  .modal {
+    background: #fff; border-radius: 16px; padding: 28px; margin: 16px;
+    display: flex; flex-direction: column; gap: 8px; text-align: center; max-width: 340px;
+  }
+  .modal .controls { justify-content: center; margin-top: 12px; }
+
+  .toast {
+    position: fixed; top: 18px; left: 50%; transform: translateX(-50%);
+    background: #2b2b2b; color: #fff; padding: 12px 24px; border-radius: 30px;
+    font-weight: 600; opacity: 0; pointer-events: none; transition: opacity 0.25s; z-index: 10;
+    max-width: 90vw; text-align: center;
+  }
+  .toast.show { opacity: 1; }
+
+  /* Game over */
+  .winner { font-size: 2rem; font-weight: 800; text-align: center; }
+  .final-scores { display: flex; flex-direction: column; gap: 8px; width: 100%; max-width: 400px; }
+  .final-row { display: flex; justify-content: space-between; background: #fff; padding: 14px 20px; border-radius: 12px; font-size: 1.2rem; font-weight: 600; }
+
+  /* Play Online lobby */
+  #onlineScreen { max-width: 460px; }
+  .ol-blurb { color: var(--mute); text-align: center; max-width: 380px; font-weight: 600; }
+  .ol-choice { display: flex; flex-direction: column; gap: 12px; width: 100%; max-width: 360px; }
+  .ol-or { text-align: center; color: var(--mute); font-weight: 700; }
+  .ol-join { display: flex; gap: 8px; }
+  .ol-join .team-name-input { flex: 1; }
+  .ol-join .big-btn { padding: 14px 24px; }
+  .ol-status { display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; }
+  .ol-code-label { color: var(--mute); font-weight: 700; }
+  .ol-code { font-size: 3rem; font-weight: 800; letter-spacing: 8px; color: var(--plum); text-indent: 8px; }
+  .ol-spin { color: var(--mute); font-weight: 700; min-height: 1.3em; }
+
+  /* Online race: my board centered with the opponent's progress on top */
+  .race-row.online { flex-direction: column; align-items: center; gap: 16px; }
+  .race-row.online .race-panel { width: 100%; max-width: 560px; }
+  .opp-strip {
+    width: 100%; max-width: 560px; display: flex; align-items: center; justify-content: space-between;
+    background: var(--paper); border: 2.5px solid var(--ink); border-radius: 16px; padding: 10px 16px;
+    box-shadow: 0 4px 0 var(--line);
+  }
+  .opp-strip .opp-name { font-weight: 800; }
+  .opp-pips { display: flex; gap: 6px; }
+  .opp-pips .pip { width: 18px; height: 18px; border-radius: 50%; border: 2.5px solid var(--ink); background: var(--paper); }
+  .opp-pips .pip.on { background: var(--teal); }
+</style>
+</head>
+<body>
+
+<div class="toast" id="toast"></div>
+
+<div class="modal-bg" id="quitModal">
+  <div class="modal">
+    <div style="font-weight:800; font-size:1.2rem;">Return to the menu?</div>
+    <div style="color:#777;">This game will be lost.</div>
+    <div class="controls">
+      <button class="ctrl-btn primary" onclick="hideQuit()">Keep Playing</button>
+      <button class="ctrl-btn" onclick="location.reload()">End Game</button>
+    </div>
+  </div>
+</div>
+
+<div class="countdown" id="countdown"><div id="countNum">3</div></div>
+
+<div class="countdown" id="revealOverlay">
+  <div style="display:flex; flex-direction:column; gap:8px; width:min(92%, 520px); text-align:center;">
+    <div style="font-weight:800; font-size:1.4rem;" id="revealTitle"></div>
+    <div style="color:#777; margin-bottom:6px;">Here's what the groups were:</div>
+    <div style="display:flex; flex-direction:column; gap:8px;" id="revealRows"></div>
+    <button class="big-btn" id="revealContinueBtn" style="margin-top:16px; align-self:center;">Continue ▶</button>
+  </div>
+</div>
+
+<div class="modal-bg" id="bonusModal">
+  <div class="modal" style="max-width:440px; width:90%;">
+    <div style="font-weight:800; font-size:1.15rem;">⭐ Bonus space!</div>
+    <div style="color:#777;" id="bonusPrompt">Find the missing number — get it right and spin again!</div>
+    <div id="bonusGraphic"></div>
+    <div class="bonus-words" id="bonusWords"></div>
+    <div style="font-weight:800; font-size:1.3rem;" id="bonusTimer"></div>
+  </div>
+</div>
+
+<!-- HOME -->
+<div class="screen active" id="homeScreen">
+  <div class="menu-wrap">
+    <div class="menu-top">
+      <div class="wordmark">Flock</div>
+      <div class="tagline">Sort the words. Spot the flock.</div>
+      <div class="bird-wire" id="birdWire"></div>
+    </div>
+    <div class="menu-actions">
+      <button class="menu-card card-daily" onclick="openDaily()">
+        <span class="menu-card-icon" id="menuCalIcon"></span>
+        <span class="menu-card-main">
+          <span class="menu-card-title">Daily Puzzle</span>
+          <span class="menu-card-sub">New 16 words every day</span>
+        </span>
+        <span class="menu-card-arrow">→</span>
+      </button>
+      <button class="menu-card" onclick="openLevels()">
+        <span class="menu-card-icon" id="menuLevelsOwl"></span>
+        <span class="menu-card-main"><span class="menu-card-title">Levels</span></span>
+        <span class="menu-card-tag" id="menuLevelsCount"></span>
+      </button>
+      <button class="menu-card" onclick="openMulti()">
+        <span class="menu-card-icon" id="menuMultiOwl"></span>
+        <span class="menu-card-main"><span class="menu-card-title">Multiplayer</span><span class="menu-card-sub">Same device, 2-4 teams</span></span>
+        <span class="menu-card-badge">PLAY</span>
+      </button>
+      <button class="menu-card" onclick="openOnline()">
+        <span class="menu-card-icon" id="menuOnlineOwl"></span>
+        <span class="menu-card-main"><span class="menu-card-title">Play Online</span><span class="menu-card-sub">Race a friend by room code</span></span>
+        <span class="menu-card-badge" style="background:var(--teal)">BETA</span>
+      </button>
+    </div>
+    <div class="menu-streak" id="dailyStatus"></div>
+  </div>
+</div>
+
+<!-- DAILY -->
+<div class="screen" id="dailyScreen">
+  <div class="topbar">
+    <button class="iconbtn" onclick="goHome()">‹</button>
+    <div class="topbar-title">Daily Puzzle</div>
+    <div class="topbar-right"></div>
+  </div>
+  <div class="daily-wrap">
+    <div class="daily-date">
+      <div class="daily-dow" id="dailyDow"></div>
+      <div class="daily-md" id="dailyMd"></div>
+      <div class="daily-no" id="dailyNo"></div>
+    </div>
+    <div class="streak-card">
+      <div class="streak-head">🔥 <span id="streakCount">0</span>-day streak</div>
+      <div class="streak-days" id="streakDays"></div>
+    </div>
+    <div class="daily-mid">16 words · 4 flocks · one solve</div>
+    <div class="daily-owl" id="dailyOwl"></div>
+    <button class="big-btn btn-daily" style="width:100%;display:flex;justify-content:center;" onclick="startDaily()">Play today’s puzzle</button>
+    <div class="daily-foot">Solve before midnight to keep your streak</div>
+  </div>
+</div>
+
+<!-- LEVELS -->
+<div class="screen" id="levelsScreen">
+  <div class="topbar">
+    <button class="iconbtn" onclick="goHome()">‹</button>
+    <div class="topbar-title">Levels</div>
+    <div class="topbar-right"><span class="count-pill" id="levelsCountPill"></span></div>
+  </div>
+  <div class="levels-wrap">
+    <div class="level-grid" id="levelGrid"></div>
+  </div>
+  <div class="level-pager">
+    <button class="iconbtn" id="pgPrev">‹</button>
+    <div class="pg-label" id="pgLabel"></div>
+    <button class="iconbtn" id="pgNext">›</button>
+  </div>
+</div>
+
+<!-- MULTIPLAYER SETUP -->
+<div class="screen" id="setupScreen">
+  <h1>Multiplayer</h1>
+  <div class="rivalry" id="rivalryBoard"></div>
+  <div style="color:#999; font-size:0.95rem; max-width:480px; text-align:center;">
+    All teams race the same hidden groups at once. Wrong guesses cost a point.
+    Win the round, roll the die, move your pawn. First to the finish wins!
+  </div>
+  <div class="setup-section">
+    <div class="setup-label">Teams</div>
+    <div class="seg" id="teamCountSeg">
+      <button class="sel" onclick="setTeamCount(2)">2</button>
+      <button onclick="setTeamCount(3)">3</button>
+      <button onclick="setTeamCount(4)">4</button>
+    </div>
+  </div>
+  <div class="setup-section" id="teamNames"></div>
+  <button class="big-btn" onclick="startGame()">Start Game</button>
+  <button class="menu-btn" onclick="goHome()">← Back</button>
+</div>
+
+<!-- PLAY ONLINE (room-code lobby) -->
+<div class="screen" id="onlineScreen">
+  <h1>Play Online</h1>
+  <div class="ol-blurb">You and a friend race the same words from anywhere. One of you creates a game and shares the code.</div>
+
+  <div class="setup-section">
+    <div class="setup-label">Your name</div>
+    <input class="team-name-input" id="olName" maxlength="16" placeholder="Player">
+  </div>
+
+  <div class="ol-choice" id="olChoice">
+    <button class="big-btn" style="background:var(--teal)" onclick="onlineCreate()">Create Game</button>
+    <div class="ol-or">or</div>
+    <div class="ol-join">
+      <input class="team-name-input" id="olCode" maxlength="5" placeholder="CODE" style="text-transform:uppercase;text-align:center;letter-spacing:3px;font-weight:800">
+      <button class="big-btn" onclick="onlineJoin()">Join</button>
+    </div>
+  </div>
+
+  <div class="ol-status" id="olStatus" style="display:none">
+    <div class="ol-code-label" id="olCodeLabel"></div>
+    <div class="ol-code" id="olCodeBig"></div>
+    <div class="ol-spin" id="olSpinMsg"></div>
+  </div>
+
+  <button class="menu-btn" onclick="onlineLeave()">← Back</button>
+</div>
+
+<!-- BOARD (the macro view between rounds) -->
+<div class="screen" id="boardScreen">
+  <div class="board-head">
+    <div class="board-wordmark">Flock</div>
+    <span class="round-badge" id="roundBadge">ROUND 1</span>
+  </div>
+  <div class="board-svg-wrap" id="boardTrack"></div>
+  <div class="board-foot">
+    <div class="board-foot-left">
+      <div class="turn-banner" id="boardBanner"></div>
+      <div class="legend" id="legend"></div>
+      <button class="big-btn" id="boardBtn">Start</button>
+    </div>
+    <div id="wheelArea"></div>
+  </div>
+  <button class="menu-btn" onclick="showQuit()">☰ Menu</button>
+</div>
+
+<!-- RACE -->
+<div class="screen" id="raceScreen">
+  <div class="race-row" id="raceRow"></div>
+  <button class="menu-btn" onclick="showQuit()">☰ Menu</button>
+</div>
+
+<!-- GAME -->
+<div class="screen" id="gameScreen">
+  <div class="topbar">
+    <button class="iconbtn" onclick="goHome()">✕</button>
+    <div class="topbar-title" id="gameTitle">Puzzle</div>
+    <div class="topbar-right"><span class="game-score" id="gameScore">0</span></div>
+  </div>
+  <div class="game-wrap">
+    <div class="game-sub">Make four flocks of four</div>
+    <div class="turn-banner" id="turnBanner"></div>
+    <div class="board" id="board"></div>
+    <div class="controls" id="gameControls">
+      <button class="ctrl-btn" onclick="clearSelection()">Clear</button>
+      <button class="ctrl-btn" onclick="shuffleTiles()" aria-label="Shuffle"><span class="ctrl-icon"><svg width="18" height="18" viewBox="0 0 16 16"><path d="M3 5 h4 l5 6 h1 M3 11 h4 l5 -6 h1" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M11 3 l2 2 -2 2 M11 9 l2 2 -2 2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
+      <button class="ctrl-btn primary" id="submitBtn" onclick="submitGroup()" disabled style="flex:1">Submit</button>
+    </div>
+    <button class="big-btn" id="continueBtn" style="display:none;margin-top:14px;align-self:center" onclick="endGame()">See Results →</button>
+  </div>
+</div>
+
+<!-- GAME OVER -->
+<div class="screen" id="endScreen">
+  <h1>Game Over</h1>
+  <div class="winner" id="winnerText"></div>
+  <div class="final-scores" id="finalScores"></div>
+  <div class="final-scores" id="solutionReveal"></div>
+  <button class="big-btn" id="nextLevelBtn" style="display:none">Next Level</button>
+  <button class="big-btn" onclick="location.reload()">Menu</button>
+</div>
+
+<script>
+// --- Sound effects (synthesized, no audio files) ---
+// iOS requires the AudioContext to be created/resumed from a user gesture,
+// so we lazily init on any pointerdown.
+let actx = null;
+document.addEventListener("pointerdown", () => {
+  if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
+  if (actx.state === "suspended") actx.resume();
+});
+
+function beep(freq, dur, type, vol, delay) {
+  if (!actx) return;
+  const t = actx.currentTime + (delay || 0);
+  const o = actx.createOscillator();
+  const g = actx.createGain();
+  o.type = type || "sine";
+  o.frequency.value = freq;
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(vol || 0.25, t + 0.012); // quick attack, no click
+  g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  o.connect(g);
+  g.connect(actx.destination);
+  o.start(t);
+  o.stop(t + dur);
+}
+
+const SFX = {
+  tap()     { beep(620, 0.06, "triangle", 0.22); },
+  tick()    { beep(1150, 0.045, "square", 0.16); },                       // spinner clicks
+  hop(n)    { beep(440 + n * 70, 0.09, "triangle", 0.3); },               // pawn hops, rising
+  lock()    { [220, 165, 110].forEach((f, i) => beep(f, 0.22 + i * 0.08, "sawtooth", 0.2, i * 0.14)); },
+  count(n)  { beep(n === 0 ? 880 : 440, n === 0 ? 0.5 : 0.16, "square", 0.22); }, // 3..2..1..GO
+  correct() { [523, 659, 784].forEach((f, i) => beep(f, 0.2, "triangle", 0.28, i * 0.09)); },
+  wrong()   { beep(185, 0.22, "sawtooth", 0.22); beep(140, 0.3, "sawtooth", 0.22, 0.12); },
+  win()     { [523, 659, 784, 1047, 784, 1047].forEach((f, i) => beep(f, 0.22, "triangle", 0.28, i * 0.12)); }
+};
+
+// Phone vs tablet: use the shorter viewport side so orientation doesn't matter
+// (a phone in landscape is still a phone). Phones cap at 2 teams and use a
+// shorter board; iPads get the full 4-team card-table layout and 40-space loop.
+const IS_PHONE = Math.min(window.innerWidth, window.innerHeight) < 600;
+
+// Difficulty: 1 = easiest ... 4 = hardest. Points = difficulty.
+const DIFF_COLORS = { 1: "#FCE883", 2: "#a2457e", 3: "#FF8243", 4: "#069494" };
+const DIFF_TEXT   = { 1: "#2b2b2b", 2: "#ffffff", 3: "#2b2b2b", 4: "#ffffff" };
+
+// Category bank: each category has a pool of 6+ candidate words.
+// A puzzle is assembled at runtime: one random category per difficulty tier,
+// 4 random words from each pool, rebuilt if any word collides across categories.
+// 15 categories per tier = 50,625 category combos x word-subset variation = millions of boards.
+const BANK = [
+  // Tier 1 — easy
+  { cat: "Pizza toppings", diff: 1, pool: ["PEPPERONI", "MUSHROOM", "OLIVE", "ONION", "SAUSAGE", "PEPPER", "BACON"] },
+  { cat: "Breakfast foods", diff: 1, pool: ["PANCAKE", "WAFFLE", "OMELET", "CEREAL", "BAGEL", "TOAST", "MUFFIN"] },
+  { cat: "Ocean animals", diff: 1, pool: ["SHARK", "WHALE", "DOLPHIN", "OCTOPUS", "SEAL", "CRAB", "JELLYFISH"] },
+  { cat: "Board games", diff: 1, pool: ["CHESS", "MONOPOLY", "CLUE", "RISK", "CHECKERS", "SCRABBLE"] },
+  { cat: "Fruits", diff: 1, pool: ["MANGO", "PEACH", "GRAPE", "KIWI", "PLUM", "CHERRY", "PAPAYA"] },
+  { cat: "Vegetables", diff: 1, pool: ["CARROT", "SPINACH", "BROCCOLI", "CELERY", "RADISH", "TURNIP"] },
+  { cat: "Dog breeds", diff: 1, pool: ["BEAGLE", "POODLE", "BOXER", "HUSKY", "PUG", "COLLIE"] },
+  { cat: "Instruments", diff: 1, pool: ["PIANO", "VIOLIN", "TRUMPET", "FLUTE", "CELLO", "DRUMS", "OBOE"] },
+  { cat: "Wet weather", diff: 1, pool: ["FOG", "HAIL", "SLEET", "DRIZZLE", "THUNDER", "FROST"] },
+  { cat: "Shades & colors", diff: 1, pool: ["CRIMSON", "TEAL", "MAROON", "BEIGE", "COBALT", "IVORY"] },
+  { cat: "Sports", diff: 1, pool: ["TENNIS", "HOCKEY", "GOLF", "RUGBY", "SOCCER", "BOXING"] },
+  { cat: "Desserts", diff: 1, pool: ["BROWNIE", "PUDDING", "SUNDAE", "COBBLER", "ECLAIR", "TIRAMISU"] },
+  { cat: "Birds", diff: 1, pool: ["ROBIN", "SPARROW", "FALCON", "PELICAN", "CARDINAL", "CROW"] },
+  { cat: "In a kitchen", diff: 1, pool: ["SPATULA", "WHISK", "BLENDER", "KETTLE", "TOASTER", "SKILLET"] },
+  { cat: "School subjects", diff: 1, pool: ["ALGEBRA", "HISTORY", "CHEMISTRY", "GEOGRAPHY", "BIOLOGY", "PHYSICS"] },
+  // Tier 2 — medium
+  { cat: "Card games", diff: 2, pool: ["BRIDGE", "HEARTS", "SPADES", "WAR", "POKER", "RUMMY", "SOLITAIRE"] },
+  { cat: "Dances", diff: 2, pool: ["SALSA", "TWIST", "SWING", "MAMBO", "TANGO", "WALTZ", "DISCO"] },
+  { cat: "Famous Toms", diff: 2, pool: ["HANKS", "CRUISE", "BRADY", "HOLLAND", "HARDY", "PETTY"] },
+  { cat: "Zodiac signs", diff: 2, pool: ["LEO", "ARIES", "GEMINI", "LIBRA", "TAURUS", "SCORPIO"] },
+  { cat: "Greek letters", diff: 2, pool: ["DELTA", "OMEGA", "SIGMA", "ALPHA", "THETA", "KAPPA"] },
+  { cat: "Poker lingo", diff: 2, pool: ["BLUFF", "FOLD", "RIVER", "FLOP", "CALL", "RAISE"] },
+  { cat: "Chess pieces", diff: 2, pool: ["KING", "QUEEN", "ROOK", "BISHOP", "KNIGHT", "PAWN"] },
+  { cat: "Coffee orders", diff: 2, pool: ["LATTE", "MOCHA", "ESPRESSO", "AMERICANO", "CAPPUCCINO", "MACCHIATO"] },
+  { cat: "Herbs & spices", diff: 2, pool: ["BASIL", "CUMIN", "SAGE", "THYME", "GINGER", "PAPRIKA"] },
+  { cat: "Gemstones", diff: 2, pool: ["RUBY", "OPAL", "JADE", "TOPAZ", "AMBER", "PEARL"] },
+  { cat: "Pasta shapes", diff: 2, pool: ["PENNE", "ROTINI", "ORZO", "RIGATONI", "FUSILLI", "LINGUINE"] },
+  { cat: "Track & field events", diff: 2, pool: ["DISCUS", "JAVELIN", "HURDLES", "VAULT", "RELAY", "SHOTPUT"] },
+  { cat: "Famous Georges", diff: 2, pool: ["WASHINGTON", "CLOONEY", "ORWELL", "LUCAS", "FOREMAN", "COSTANZA"] },
+  { cat: "Slang for money", diff: 2, pool: ["DOUGH", "BUCKS", "LOOT", "BREAD", "CABBAGE", "CLAMS"] },
+  { cat: "Units of time", diff: 2, pool: ["FORTNIGHT", "DECADE", "ERA", "EPOCH", "CENTURY", "MOMENT"] },
+  // Tier 3 — hard (fill in the blank)
+  { cat: "___ dog", diff: 3, pool: ["HOT", "UNDER", "WATCH", "CORN", "BULL", "SLED", "LAP"] },
+  { cat: "___ market", diff: 3, pool: ["STOCK", "FLEA", "SUPER", "BLACK", "FARMERS", "FISH"] },
+  { cat: "Kinds of chips", diff: 3, pool: ["POKER", "PAINT", "POTATO", "COMPUTER", "BLUE", "WOOD"] },
+  { cat: "___ trip", diff: 3, pool: ["ROAD", "GUILT", "FIELD", "EGO", "POWER", "ROUND"] },
+  { cat: "___ ball", diff: 3, pool: ["BASKET", "EYE", "MEAT", "ODD", "CANNON", "CURVE"] },
+  { cat: "___ house", diff: 3, pool: ["DOG", "GREEN", "LIGHT", "WARE", "PENT", "BIRD", "CLUB"] },
+  { cat: "___ break", diff: 3, pool: ["COFFEE", "SPRING", "TIE", "LUNCH", "PRISON", "HEART"] },
+  { cat: "___ phone", diff: 3, pool: ["SMART", "MEGA", "EAR", "MICRO", "SAXO", "CELL"] },
+  { cat: "___ fish", diff: 3, pool: ["SWORD", "JELLY", "CAT", "GOLD", "STAR", "SHELL"] },
+  { cat: "___ man", diff: 3, pool: ["SNOW", "SPOKES", "FRESH", "MAIL", "BOGEY", "HAND"] },
+  { cat: "___ stick", diff: 3, pool: ["CHOP", "LIP", "YARD", "DRUM", "JOY", "BROOM"] },
+  { cat: "Double ___", diff: 3, pool: ["AGENT", "DATE", "DUTCH", "CROSS", "HEADER", "TAKE"] },
+  { cat: "___ room", diff: 3, pool: ["BATH", "MUSH", "CLASS", "ELBOW", "HEAD", "LEG"] },
+  { cat: "___ card", diff: 3, pool: ["WILD", "CREDIT", "REPORT", "BIRTHDAY", "FLASH", "GREEN"] },
+  { cat: "___ pit", diff: 3, pool: ["FIRE", "MOSH", "ARM", "TAR", "SAND", "SNAKE"] },
+  // Tier 4 — sneaky
+  { cat: "___ board", diff: 4, pool: ["KEY", "SURF", "CARD", "SKATE", "DASH", "BILL", "CHALK"] },
+  { cat: "___ moon", diff: 4, pool: ["HONEY", "FULL", "HARVEST", "BLUE", "HALF", "NEW", "CRESCENT"] },
+  { cat: "Things with rings", diff: 4, pool: ["SATURN", "BOXER", "CIRCUS", "PHONE", "ONION", "TREE"] },
+  { cat: "Palindromes", diff: 4, pool: ["LEVEL", "KAYAK", "RADAR", "NOON", "CIVIC", "ROTOR", "MADAM"] },
+  { cat: "Homophones of letters", diff: 4, pool: ["BEE", "SEA", "JAY", "QUEUE", "ARE", "WHY", "EX"] },
+  { cat: "Things you can break", diff: 4, pool: ["RECORD", "PROMISE", "SILENCE", "HEART", "NEWS", "ICE"] },
+  { cat: "Things you can crack", diff: 4, pool: ["CODE", "JOKE", "WINDOW", "KNUCKLES", "EGG", "CASE", "SMILE"] },
+  { cat: "Things that run", diff: 4, pool: ["NOSE", "RIVER", "ENGINE", "CLOCK", "FRIDGE", "CANDIDATE"] },
+  { cat: "Things with keys", diff: 4, pool: ["PIANO", "FLORIDA", "MAP", "LAPTOP", "JAILER", "TYPEWRITER"] },
+  { cat: "Things with teeth", diff: 4, pool: ["COMB", "SAW", "ZIPPER", "GEAR", "SHARK", "RAKE"] },
+  { cat: "___ hand", diff: 4, pool: ["SECOND", "FARM", "STAGE", "BACK", "SHORT", "UPPER"] },
+  { cat: "Things you can raise", diff: 4, pool: ["BAR", "FLAG", "ROOF", "EYEBROW", "STAKES", "VOICE"] },
+  { cat: "Things with scales", diff: 4, pool: ["FISH", "PIANO", "JUSTICE", "DRAGON", "MAP", "BATHROOM"] },
+  { cat: "Things that pop", diff: 4, pool: ["QUESTION", "CORN", "BALLOON", "WEASEL", "CHAMPAGNE", "COLLAR"] },
+  { cat: "Things with a bed", diff: 4, pool: ["RIVER", "TRUCK", "FLOWER", "HOSPITAL", "TANNING", "NAIL"] },
+  // Tier 1 expansion
+  { cat: "Zoo animals", diff: 1, pool: ["LION", "TIGER", "ELEPHANT", "GIRAFFE", "ZEBRA", "MONKEY"] },
+  { cat: "Farm animals", diff: 1, pool: ["COW", "PIG", "GOAT", "SHEEP", "HORSE", "CHICKEN"] },
+  { cat: "Insects", diff: 1, pool: ["ANT", "BEETLE", "MOTH", "WASP", "CRICKET", "DRAGONFLY"] },
+  { cat: "Flowers", diff: 1, pool: ["ROSE", "TULIP", "DAISY", "LILY", "ORCHID", "PEONY"] },
+  { cat: "Trees", diff: 1, pool: ["OAK", "MAPLE", "PINE", "BIRCH", "WILLOW", "CEDAR"] },
+  { cat: "Beverages", diff: 1, pool: ["SODA", "JUICE", "TEA", "LEMONADE", "CIDER", "COCOA"] },
+  { cat: "Reptiles", diff: 1, pool: ["SNAKE", "LIZARD", "TURTLE", "GECKO", "IGUANA", "CROCODILE"] },
+  { cat: "Berries", diff: 1, pool: ["STRAWBERRY", "BLUEBERRY", "RASPBERRY", "CRANBERRY", "BLACKBERRY", "GOOSEBERRY"] },
+  { cat: "Condiments", diff: 1, pool: ["KETCHUP", "MUSTARD", "MAYO", "RELISH", "PESTO", "AIOLI"] },
+  { cat: "Cheeses", diff: 1, pool: ["CHEDDAR", "GOUDA", "BRIE", "FETA", "SWISS", "PARMESAN"] },
+  { cat: "Breads", diff: 1, pool: ["BAGUETTE", "RYE", "SOURDOUGH", "PITA", "BRIOCHE", "CIABATTA"] },
+  { cat: "Soups", diff: 1, pool: ["CHOWDER", "BISQUE", "GUMBO", "MINESTRONE", "BROTH", "RAMEN"] },
+  { cat: "Sandwiches", diff: 1, pool: ["BLT", "CLUB", "REUBEN", "HOAGIE", "MELT", "GYRO"] },
+  { cat: "Pies", diff: 1, pool: ["PECAN", "PUMPKIN", "CHERRY", "RHUBARB", "CUSTARD", "APPLE"] },
+  { cat: "Candy", diff: 1, pool: ["TAFFY", "FUDGE", "GUMMY", "LOLLIPOP", "CARAMEL", "TOFFEE"] },
+  { cat: "Kitchen appliances", diff: 1, pool: ["OVEN", "MICROWAVE", "FRIDGE", "DISHWASHER", "FREEZER", "STOVE"] },
+  { cat: "Furniture", diff: 1, pool: ["SOFA", "DRESSER", "OTTOMAN", "BOOKCASE", "RECLINER", "NIGHTSTAND"] },
+  { cat: "Tools", diff: 1, pool: ["HAMMER", "WRENCH", "PLIERS", "CHISEL", "DRILL", "SCREWDRIVER"] },
+  { cat: "Clothing", diff: 1, pool: ["BLAZER", "CARDIGAN", "HOODIE", "VEST", "PARKA", "TUNIC"] },
+  { cat: "Footwear", diff: 1, pool: ["SNEAKER", "LOAFER", "SANDAL", "CLOG", "MOCCASIN", "OXFORD"] },
+  { cat: "Hats", diff: 1, pool: ["BERET", "FEDORA", "BEANIE", "SOMBRERO", "VISOR", "TURBAN"] },
+  { cat: "Jewelry", diff: 1, pool: ["NECKLACE", "BRACELET", "EARRING", "ANKLET", "BROOCH", "PENDANT"] },
+  { cat: "School supplies", diff: 1, pool: ["PENCIL", "ERASER", "RULER", "GLUE", "CRAYON", "NOTEBOOK"] },
+  { cat: "Sports equipment", diff: 1, pool: ["BAT", "RACKET", "HELMET", "GLOVE", "PUCK", "CLEATS"] },
+  { cat: "Playground equipment", diff: 1, pool: ["SLIDE", "SWING", "SEESAW", "SANDBOX", "LADDER", "TUNNEL"] },
+  { cat: "Camping gear", diff: 1, pool: ["TENT", "LANTERN", "COMPASS", "CANTEEN", "HAMMOCK", "FLASHLIGHT"] },
+  { cat: "Beach items", diff: 1, pool: ["TOWEL", "SUNSCREEN", "UMBRELLA", "COOLER", "PAIL", "SNORKEL"] },
+  { cat: "Winter wear", diff: 1, pool: ["SCARF", "MITTENS", "EARMUFFS", "BOOTS", "THERMALS", "BALACLAVA"] },
+  { cat: "Storms", diff: 1, pool: ["TORNADO", "HURRICANE", "BLIZZARD", "MONSOON", "CYCLONE", "TYPHOON"] },
+  { cat: "Landforms", diff: 1, pool: ["VALLEY", "PLATEAU", "CANYON", "MESA", "DUNE", "CLIFF"] },
+  { cat: "Bodies of water", diff: 1, pool: ["LAGOON", "FJORD", "STRAIT", "BAYOU", "INLET", "POND"] },
+  { cat: "Planets", diff: 1, pool: ["MERCURY", "VENUS", "MARS", "JUPITER", "NEPTUNE", "SATURN"] },
+  { cat: "Space objects", diff: 1, pool: ["COMET", "ASTEROID", "NEBULA", "GALAXY", "METEOR", "QUASAR"] },
+  { cat: "Dinosaurs", diff: 1, pool: ["RAPTOR", "STEGOSAURUS", "TRICERATOPS", "BRONTOSAURUS", "PTERODACTYL", "ALLOSAURUS"] },
+  { cat: "Vehicles", diff: 1, pool: ["SCOOTER", "TRACTOR", "SUBWAY", "FERRY", "BLIMP", "CANOE"] },
+  { cat: "Aircraft", diff: 1, pool: ["JET", "GLIDER", "HELICOPTER", "DRONE", "ZEPPELIN", "SEAPLANE"] },
+  { cat: "Occupations", diff: 1, pool: ["PLUMBER", "TEACHER", "LAWYER", "CHEF", "PILOT", "NURSE"] },
+  { cat: "Body joints & parts", diff: 1, pool: ["ELBOW", "KNEE", "ANKLE", "WRIST", "SHOULDER", "SHIN"] },
+  { cat: "Emotions", diff: 1, pool: ["JOY", "ANGER", "FEAR", "ENVY", "PRIDE", "GRIEF"] },
+  { cat: "Languages", diff: 1, pool: ["SPANISH", "FRENCH", "MANDARIN", "ARABIC", "HINDI", "GERMAN"] },
+  { cat: "Currencies", diff: 1, pool: ["DOLLAR", "EURO", "YEN", "PESO", "RUPEE", "FRANC"] },
+  { cat: "US states", diff: 1, pool: ["TEXAS", "OHIO", "MAINE", "UTAH", "IDAHO", "KANSAS"] },
+  { cat: "World capitals", diff: 1, pool: ["PARIS", "TOKYO", "CAIRO", "LIMA", "OSLO", "MADRID"] },
+  { cat: "Islands", diff: 1, pool: ["HAWAII", "CUBA", "FIJI", "MALTA", "BALI", "CYPRUS"] },
+  { cat: "Famous mountains", diff: 1, pool: ["EVEREST", "FUJI", "DENALI", "RAINIER", "MATTERHORN", "VESUVIUS"] },
+  { cat: "Rivers", diff: 1, pool: ["NILE", "AMAZON", "DANUBE", "THAMES", "GANGES", "MISSISSIPPI"] },
+  { cat: "Music genres", diff: 1, pool: ["JAZZ", "BLUES", "REGGAE", "FOLK", "TECHNO", "COUNTRY"] },
+  { cat: "Art supplies", diff: 1, pool: ["CANVAS", "EASEL", "PALETTE", "BRUSH", "CHARCOAL", "PASTEL"] },
+  { cat: "Fairy tale figures", diff: 1, pool: ["WITCH", "GIANT", "DWARF", "PRINCE", "OGRE", "TROLL"] },
+  { cat: "Mythical creatures", diff: 1, pool: ["UNICORN", "PHOENIX", "GRIFFIN", "MERMAID", "CENTAUR", "YETI"] },
+  { cat: "Halloween things", diff: 1, pool: ["GHOST", "SKELETON", "PUMPKIN", "VAMPIRE", "MUMMY", "COBWEB"] },
+  { cat: "Christmas things", diff: 1, pool: ["TINSEL", "WREATH", "SLEIGH", "MISTLETOE", "STOCKING", "ORNAMENT"] },
+  { cat: "Circus acts", diff: 1, pool: ["JUGGLER", "ACROBAT", "TRAPEZE", "CLOWN", "TIGHTROPE", "STILTS"] },
+  { cat: "Salad fixings", diff: 1, pool: ["LETTUCE", "CROUTON", "CUCUMBER", "TOMATO", "SPROUTS", "VINAIGRETTE"] },
+  { cat: "Nuts", diff: 1, pool: ["ALMOND", "CASHEW", "PECAN", "PISTACHIO", "WALNUT", "HAZELNUT"] },
+  { cat: "Grains", diff: 1, pool: ["RICE", "QUINOA", "BARLEY", "OATS", "MILLET", "RYE"] },
+  { cat: "Dairy products", diff: 1, pool: ["MILK", "YOGURT", "BUTTER", "CREAM", "KEFIR", "CURD"] },
+  { cat: "Baby animals", diff: 1, pool: ["CUB", "FAWN", "JOEY", "CALF", "FOAL", "DUCKLING"] },
+  { cat: "Animal homes", diff: 1, pool: ["NEST", "BURROW", "HIVE", "DEN", "LODGE", "WARREN"] },
+  { cat: "Animal sounds", diff: 1, pool: ["MOO", "OINK", "NEIGH", "BLEAT", "CLUCK", "BRAY"] },
+  { cat: "Wallet contents", diff: 1, pool: ["CASH", "RECEIPT", "COUPON", "LICENSE", "PHOTOS", "TICKET"] },
+  { cat: "Bathroom items", diff: 1, pool: ["SHAMPOO", "RAZOR", "FLOSS", "LOOFAH", "PLUNGER", "MOUTHWASH"] },
+  { cat: "Office supplies", diff: 1, pool: ["STAPLER", "FOLDER", "BINDER", "HIGHLIGHTER", "PAPERCLIP", "ENVELOPE"] },
+  { cat: "Gym equipment", diff: 1, pool: ["TREADMILL", "DUMBBELL", "KETTLEBELL", "BARBELL", "ROWER", "MAT"] },
+  { cat: "Wedding things", diff: 1, pool: ["BOUQUET", "VEIL", "TUXEDO", "GROOM", "AISLE", "VOWS"] },
+  // Tier 2 expansion
+  { cat: "Famous Wills", diff: 2, pool: ["SMITH", "FERRELL", "ARNETT", "SHATNER", "WALLACE", "WONKA"] },
+  { cat: "Famous Chrises", diff: 2, pool: ["PRATT", "EVANS", "HEMSWORTH", "ROCK", "PINE", "TUCKER"] },
+  { cat: "Famous Jennifers", diff: 2, pool: ["ANISTON", "LOPEZ", "LAWRENCE", "GARNER", "HUDSON", "COOLIDGE"] },
+  { cat: "Princesses", diff: 2, pool: ["ARIEL", "BELLE", "JASMINE", "MOANA", "TIANA", "AURORA"] },
+  { cat: "Superheroes", diff: 2, pool: ["BATMAN", "HULK", "THOR", "FLASH", "AQUAMAN", "WOLVERINE"] },
+  { cat: "Wizard of Oz", diff: 2, pool: ["DOROTHY", "TOTO", "SCARECROW", "LION", "WITCH", "KANSAS"] },
+  { cat: "Monopoly things", diff: 2, pool: ["BOARDWALK", "CHANCE", "JAIL", "THIMBLE", "RAILROAD", "DICE"] },
+  { cat: "Clue (the game)", diff: 2, pool: ["PLUM", "SCARLET", "MUSTARD", "PEACOCK", "REVOLVER", "BALLROOM"] },
+  { cat: "Norse gods", diff: 2, pool: ["ODIN", "THOR", "LOKI", "FREYA", "BALDER", "HEIMDALL"] },
+  { cat: "Greek gods", diff: 2, pool: ["ZEUS", "HERA", "APOLLO", "ARES", "HERMES", "POSEIDON"] },
+  { cat: "NATO alphabet", diff: 2, pool: ["BRAVO", "CHARLIE", "ECHO", "TANGO", "FOXTROT", "JULIET"] },
+  { cat: "Beatles world", diff: 2, pool: ["JOHN", "PAUL", "GEORGE", "RINGO", "YOKO", "LIVERPOOL"] },
+  { cat: "Rainbow colors", diff: 2, pool: ["RED", "ORANGE", "YELLOW", "GREEN", "INDIGO", "VIOLET"] },
+  { cat: "Olympic host cities", diff: 2, pool: ["ATHENS", "BEIJING", "SYDNEY", "ATLANTA", "SOCHI", "RIO"] },
+  { cat: "Shakespeare characters", diff: 2, pool: ["HAMLET", "MACBETH", "OTHELLO", "JULIET", "PUCK", "FALSTAFF"] },
+  { cat: "Harry Potter world", diff: 2, pool: ["HOGWARTS", "HERMIONE", "DUMBLEDORE", "SNAPE", "QUIDDITCH", "MUGGLE"] },
+  { cat: "Star Wars world", diff: 2, pool: ["YODA", "VADER", "CHEWBACCA", "JEDI", "EWOK", "TATOOINE"] },
+  { cat: "Pixar films", diff: 2, pool: ["UP", "COCO", "BRAVE", "CARS", "SOUL", "LUCA"] },
+  { cat: "US presidents", diff: 2, pool: ["LINCOLN", "MADISON", "MONROE", "GRANT", "TAFT", "HOOVER"] },
+  { cat: "Painters", diff: 2, pool: ["MONET", "PICASSO", "DALI", "MATISSE", "KAHLO", "WARHOL"] },
+  { cat: "Composers", diff: 2, pool: ["BACH", "MOZART", "CHOPIN", "VERDI", "HANDEL", "BRAHMS"] },
+  { cat: "Fictional detectives", diff: 2, pool: ["SHERLOCK", "POIROT", "MARPLE", "COLUMBO", "MONK", "NANCY"] },
+  { cat: "Dog commands", diff: 2, pool: ["SIT", "STAY", "FETCH", "HEEL", "SHAKE", "SPEAK"] },
+  { cat: "Cat breeds", diff: 2, pool: ["SIAMESE", "PERSIAN", "SPHYNX", "BENGAL", "RAGDOLL", "TABBY"] },
+  { cat: "Horse gaits", diff: 2, pool: ["WALK", "TROT", "CANTER", "GALLOP", "LOPE", "PACE"] },
+  { cat: "Knots", diff: 2, pool: ["BOWLINE", "HITCH", "SQUARE", "GRANNY", "CLOVE", "SHEEPSHANK"] },
+  { cat: "Cloud types", diff: 2, pool: ["CUMULUS", "CIRRUS", "STRATUS", "NIMBUS", "FOG", "HAZE"] },
+  { cat: "Bones", diff: 2, pool: ["FEMUR", "TIBIA", "ULNA", "STERNUM", "FIBULA", "RADIUS"] },
+  { cat: "Tooth types", diff: 2, pool: ["MOLAR", "CANINE", "INCISOR", "WISDOM", "CUSPID", "FANG"] },
+  { cat: "Organs", diff: 2, pool: ["LIVER", "KIDNEY", "SPLEEN", "LUNG", "PANCREAS", "BLADDER"] },
+  { cat: "Chemical elements", diff: 2, pool: ["HELIUM", "CARBON", "NEON", "ZINC", "IRON", "GOLD"] },
+  { cat: "Gases", diff: 2, pool: ["OXYGEN", "NITROGEN", "METHANE", "ARGON", "PROPANE", "OZONE"] },
+  { cat: "Shapes", diff: 2, pool: ["RHOMBUS", "TRAPEZOID", "HEXAGON", "ELLIPSE", "PENTAGON", "SPHERE"] },
+  { cat: "Math terms", diff: 2, pool: ["SUM", "PRODUCT", "QUOTIENT", "FACTOR", "PRIME", "MEAN"] },
+  { cat: "Punctuation", diff: 2, pool: ["COMMA", "COLON", "DASH", "PERIOD", "HYPHEN", "ELLIPSIS"] },
+  { cat: "Parts of speech", diff: 2, pool: ["NOUN", "VERB", "ADVERB", "PRONOUN", "ARTICLE", "PREPOSITION"] },
+  { cat: "Poetry forms", diff: 2, pool: ["HAIKU", "SONNET", "LIMERICK", "ODE", "EPIC", "BALLAD"] },
+  { cat: "Musical tempos", diff: 2, pool: ["ALLEGRO", "ADAGIO", "ANDANTE", "PRESTO", "LARGO", "VIVACE"] },
+  { cat: "Teas", diff: 2, pool: ["CHAI", "OOLONG", "MATCHA", "SENCHA", "ROOIBOS", "HIBISCUS"] },
+  { cat: "Cocktails", diff: 2, pool: ["MOJITO", "MARGARITA", "COSMO", "MARTINI", "MIMOSA", "NEGRONI"] },
+  { cat: "Sushi terms", diff: 2, pool: ["NIGIRI", "SASHIMI", "MAKI", "TEMPURA", "WASABI", "UNAGI"] },
+  { cat: "Mexican dishes", diff: 2, pool: ["TACO", "BURRITO", "TAMALE", "QUESADILLA", "CHURRO", "ELOTE"] },
+  { cat: "Indian dishes", diff: 2, pool: ["CURRY", "NAAN", "SAMOSA", "TIKKA", "BIRYANI", "DAL"] },
+  { cat: "Ballet terms", diff: 2, pool: ["PLIE", "ARABESQUE", "PIROUETTE", "TUTU", "BARRE", "LEAP"] },
+  { cat: "Stock market terms", diff: 2, pool: ["BULL", "BEAR", "SHARE", "YIELD", "HEDGE", "MARGIN"] },
+  { cat: "Chess terms", diff: 2, pool: ["CHECK", "MATE", "CASTLE", "GAMBIT", "FORK", "PIN"] },
+  { cat: "Tennis terms", diff: 2, pool: ["ACE", "DEUCE", "VOLLEY", "LOVE", "FAULT", "LOB"] },
+  { cat: "Golf terms", diff: 2, pool: ["BIRDIE", "EAGLE", "BOGEY", "PAR", "DIVOT", "CADDIE"] },
+  { cat: "Bowling terms", diff: 2, pool: ["STRIKE", "SPARE", "GUTTER", "SPLIT", "TURKEY", "PINS"] },
+  { cat: "Baseball terms", diff: 2, pool: ["INNING", "DUGOUT", "BUNT", "STEAL", "SHORTSTOP", "UMPIRE"] },
+  { cat: "Basketball terms", diff: 2, pool: ["DUNK", "REBOUND", "TRAVEL", "FOUL", "PIVOT", "SWISH"] },
+  { cat: "Football terms", diff: 2, pool: ["BLITZ", "HUDDLE", "FUMBLE", "PUNT", "SACK", "SAFETY"] },
+  { cat: "Hockey terms", diff: 2, pool: ["PUCK", "ICING", "SLAPSHOT", "GOALIE", "RINK", "DEKE"] },
+  { cat: "Swim strokes", diff: 2, pool: ["FREESTYLE", "BACKSTROKE", "BUTTERFLY", "MEDLEY", "CRAWL", "SIDESTROKE"] },
+  { cat: "Yoga poses", diff: 2, pool: ["COBRA", "LOTUS", "WARRIOR", "PLANK", "EAGLE", "PIGEON"] },
+  { cat: "Martial arts", diff: 2, pool: ["KARATE", "JUDO", "AIKIDO", "SUMO", "CAPOEIRA", "KENDO"] },
+  { cat: "Egyptian gods", diff: 2, pool: ["RA", "ANUBIS", "OSIRIS", "BASTET", "HORUS", "THOTH"] },
+  { cat: "Constellations", diff: 2, pool: ["ORION", "CASSIOPEIA", "LYRA", "DRACO", "PEGASUS", "PHOENIX"] },
+  { cat: "Sesame Street", diff: 2, pool: ["ELMO", "GROVER", "OSCAR", "BERT", "ERNIE", "COUNT"] },
+  { cat: "Ninja Turtles", diff: 2, pool: ["LEONARDO", "MICHELANGELO", "DONATELLO", "RAPHAEL", "SPLINTER", "SHREDDER"] },
+  { cat: "Famous Mikes", diff: 2, pool: ["TYSON", "JORDAN", "MYERS", "PENCE", "PHELPS", "WAZOWSKI"] },
+  { cat: "Talk show hosts", diff: 2, pool: ["OPRAH", "ELLEN", "CONAN", "FALLON", "KIMMEL", "LENO"] },
+  { cat: "Game shows", diff: 2, pool: ["JEOPARDY", "WHEEL", "FEUD", "PRICE", "PYRAMID", "MILLIONAIRE"] },
+  { cat: "Famous Bobs", diff: 2, pool: ["DYLAN", "MARLEY", "ROSS", "HOPE", "BARKER", "NEWHART"] },
+  { cat: "Tarot cards", diff: 2, pool: ["FOOL", "MAGICIAN", "EMPRESS", "HERMIT", "TOWER", "STAR"] },
+  // Tier 3 expansion
+  { cat: "___ bear", diff: 3, pool: ["TEDDY", "POLAR", "GUMMY", "PANDA", "GRIZZLY", "MAMA"] },
+  { cat: "___ cake", diff: 3, pool: ["CUP", "PAN", "CHEESE", "CARROT", "SPONGE", "CRAB"] },
+  { cat: "___ butter", diff: 3, pool: ["PEANUT", "APPLE", "BODY", "SHEA", "ALMOND", "COCOA"] },
+  { cat: "___ pie", diff: 3, pool: ["HUMBLE", "POT", "MUD", "WHOOPIE", "MINCE", "PORK"] },
+  { cat: "___ shot", diff: 3, pool: ["GUN", "MOON", "BIG", "SLING", "LONG", "MUG"] },
+  { cat: "___ storm", diff: 3, pool: ["BRAIN", "SAND", "THUNDER", "SNOW", "FIRE", "BARN"] },
+  { cat: "___ work", diff: 3, pool: ["HOME", "NET", "FRAME", "TEAM", "PAPER", "GUESS"] },
+  { cat: "___ wood", diff: 3, pool: ["HOLLY", "DRIFT", "PLY", "FIRE", "DOG", "ROSE"] },
+  { cat: "___ land", diff: 3, pool: ["WONDER", "DREAM", "FARM", "WET", "HIGH", "GRASS"] },
+  { cat: "___ line", diff: 3, pool: ["DEAD", "HEAD", "CLOTHES", "PUNCH", "GUIDE", "HAIR"] },
+  { cat: "___ light", diff: 3, pool: ["MOON", "SPOT", "FLASH", "LIME", "DAY", "GAS"] },
+  { cat: "___ fire", diff: 3, pool: ["BON", "CAMP", "CROSS", "BACK", "CEASE", "WILD"] },
+  { cat: "___ water", diff: 3, pool: ["SALT", "FRESH", "RAIN", "DISH", "UNDER", "BACK"] },
+  { cat: "___ proof", diff: 3, pool: ["WATER", "BULLET", "FOOL", "CHILD", "FIRE", "SOUND"] },
+  { cat: "___ box", diff: 3, pool: ["SAND", "MAIL", "TOOL", "JUKE", "LUNCH", "SHADOW"] },
+  { cat: "___ bag", diff: 3, pool: ["AIR", "HAND", "SADDLE", "TEA", "WIND", "BEAN"] },
+  { cat: "___ stand", diff: 3, pool: ["BAND", "GRAND", "NEWS", "UNDER", "KICK", "HAND"] },
+  { cat: "___ walk", diff: 3, pool: ["BOARD", "SIDE", "MOON", "JAY", "CAKE", "SLEEP"] },
+  { cat: "___ way", diff: 3, pool: ["HIGH", "DRIVE", "SUB", "RUN", "HALL", "FREE"] },
+  { cat: "___ word", diff: 3, pool: ["PASS", "CROSS", "BUZZ", "KEY", "SWEAR", "WATCH"] },
+  { cat: "___ smith", diff: 3, pool: ["BLACK", "LOCK", "GOLD", "WORD", "TIN", "GUN"] },
+  { cat: "___ berry", diff: 3, pool: ["BLUE", "STRAW", "BLACK", "RASP", "GOOSE", "ELDER"] },
+  { cat: "___ nut", diff: 3, pool: ["PEA", "CHEST", "HAZEL", "DOUGH", "GROUND", "COCO"] },
+  { cat: "___ corn", diff: 3, pool: ["POP", "UNI", "CANDY", "SWEET", "PEPPER", "BARLEY"] },
+  { cat: "___ stone", diff: 3, pool: ["LIME", "MILE", "KEY", "CORNER", "TOMB", "BIRTH"] },
+  { cat: "___ mate", diff: 3, pool: ["ROOM", "CHECK", "CLASS", "TEAM", "SOUL", "PLAY"] },
+  { cat: "___ time", diff: 3, pool: ["BED", "NIGHT", "OVER", "LIFE", "NAP", "RAG"] },
+  { cat: "___ table", diff: 3, pool: ["TURN", "TIME", "POOL", "ROUND", "PERIODIC", "PICNIC"] },
+  { cat: "___ paper", diff: 3, pool: ["NEWS", "SAND", "WALL", "FLY", "TERM", "GRAPH"] },
+  { cat: "___ mark", diff: 3, pool: ["BENCH", "TRADE", "BOOK", "POST", "QUESTION", "BIRTH"] },
+  { cat: "___ ship", diff: 3, pool: ["FLAG", "FRIEND", "LEADER", "CHAMPION", "OWNER", "RELATION"] },
+  { cat: "___ town", diff: 3, pool: ["DOWN", "GHOST", "HOME", "CHINA", "SHANTY", "MID"] },
+  { cat: "___ yard", diff: 3, pool: ["BACK", "COURT", "JUNK", "GRAVE", "SHIP", "VINE"] },
+  { cat: "___ field", diff: 3, pool: ["OUT", "IN", "MINE", "CORN", "BATTLE", "GAR"] },
+  { cat: "___ hole", diff: 3, pool: ["PIN", "KEY", "MAN", "WORM", "BUTTON", "LOOP"] },
+  { cat: "___ horn", diff: 3, pool: ["FOG", "LONG", "BULL", "AIR", "SHOE", "GREEN"] },
+  { cat: "___ print", diff: 3, pool: ["BLUE", "FOOT", "FINGER", "NEWS", "SMALL", "PAW"] },
+  { cat: "___ coat", diff: 3, pool: ["RAIN", "TURN", "OVER", "TOP", "SUGAR", "RED"] },
+  { cat: "___ pot", diff: 3, pool: ["JACK", "CRACK", "TEA", "HOT", "STOCK", "HONEY"] },
+  { cat: "___ band", diff: 3, pool: ["HEAD", "RUBBER", "WRIST", "BOY", "CONTRA", "WAIST"] },
+  { cat: "___ string", diff: 3, pool: ["SHOE", "HAM", "DRAW", "HEART", "BOW", "SECOND"] },
+  { cat: "___ wheel", diff: 3, pool: ["PIN", "FERRIS", "CART", "FLY", "STEERING", "THIRD"] },
+  { cat: "___ chair", diff: 3, pool: ["ARM", "HIGH", "WHEEL", "ROCKING", "LAWN", "MUSICAL"] },
+  { cat: "___ case", diff: 3, pool: ["BOOK", "SUIT", "STAIR", "BRIEF", "PILLOW", "UPPER"] },
+  { cat: "___ glass", diff: 3, pool: ["HOUR", "EYE", "SPY", "WINE", "LOOKING", "STAINED"] },
+  { cat: "___ guard", diff: 3, pool: ["BODY", "LIFE", "VAN", "SAFE", "MOUTH", "REAR"] },
+  { cat: "___ keeper", diff: 3, pool: ["BOOK", "GOAL", "ZOO", "INN", "BAR", "HOUSE"] },
+  { cat: "___ maker", diff: 3, pool: ["MATCH", "TROUBLE", "RAIN", "PEACE", "HAY", "WATCH"] },
+  { cat: "___ piece", diff: 3, pool: ["MASTER", "TIME", "MOUTH", "CENTER", "EAR", "SHOW"] },
+  { cat: "___ pool", diff: 3, pool: ["CAR", "WHIRL", "GENE", "TIDE", "LIVER", "CESS"] },
+  { cat: "___ tooth", diff: 3, pool: ["SWEET", "BLUE", "SABER", "WISDOM", "SNAGGLE", "BUCK"] },
+  { cat: "___ bird", diff: 3, pool: ["MOCKING", "HUMMING", "BLACK", "LADY", "SONG", "EARLY"] },
+  { cat: "___ horse", diff: 3, pool: ["SEA", "RACE", "WORK", "DARK", "SAW", "CLOTHES"] },
+  { cat: "___ cat", diff: 3, pool: ["BOB", "WILD", "COPY", "TOM", "ALLEY", "POLE"] },
+  { cat: "___ fly", diff: 3, pool: ["BUTTER", "DRAGON", "FIRE", "HORSE", "MAY", "BAR"] },
+  { cat: "___ bug", diff: 3, pool: ["LADY", "BED", "LITTER", "FIRE", "JITTER", "HUM"] },
+  { cat: "___ goose", diff: 3, pool: ["MOTHER", "SILLY", "WILD", "GOLDEN", "SNOW", "CANADA"] },
+  { cat: "___ tail", diff: 3, pool: ["PONY", "FISH", "PIG", "DOVE", "YELLOW", "FOX"] },
+  { cat: "___ nose", diff: 3, pool: ["BUTTON", "BROWN", "HOOK", "ROMAN", "RUNNY", "RED"] },
+  { cat: "___ eye", diff: 3, pool: ["BULL", "EAGLE", "BLACK", "PINK", "RED", "LAZY"] },
+  { cat: "___ face", diff: 3, pool: ["BABY", "POKER", "ABOUT", "BOLD", "TYPE", "INTER"] },
+  { cat: "___ head", diff: 3, pool: ["ARROW", "EGG", "FORE", "HAMMER", "BULK", "SPEAR"] },
+  { cat: "___ foot", diff: 3, pool: ["BARE", "BIG", "TENDER", "FLAT", "WEB", "HOT"] },
+  { cat: "___ step", diff: 3, pool: ["SIDE", "DOOR", "FOOT", "LOCK", "QUICK", "MIS"] },
+  { cat: "___ + SON", diff: 3, pool: ["GRAND", "GOD", "STEP", "JACK", "MAD", "CRIM"] },
+  // Tier 4 expansion
+  { cat: "Blind ___", diff: 4, pool: ["DATE", "SPOT", "FOLD", "SIDE", "FAITH", "TRUST"] },
+  { cat: "Things with legs", diff: 4, pool: ["TABLE", "CHAIR", "PANTS", "TRIPOD", "CRAB", "JOURNEY"] },
+  { cat: "Things with a face", diff: 4, pool: ["CLOCK", "COIN", "MOUNTAIN", "WATCH", "DIE", "CLIFF"] },
+  { cat: "Things with roots", diff: 4, pool: ["TREE", "TOOTH", "HAIR", "WORD", "SQUARE", "FAMILY"] },
+  { cat: "Things you can cast", diff: 4, pool: ["SPELL", "VOTE", "NET", "SHADOW", "DOUBT", "LINE"] },
+  { cat: "Things you can draw", diff: 4, pool: ["BATH", "SWORD", "CURTAIN", "CONCLUSION", "BLOOD", "CARD"] },
+  { cat: "Things you can throw", diff: 4, pool: ["PARTY", "PUNCH", "FIT", "TANTRUM", "SHADE", "CURVE"] },
+  { cat: "Things you can catch", diff: 4, pool: ["COLD", "FIRE", "BREAK", "FISH", "FLIGHT", "EYE"] },
+  { cat: "Things you can pick", diff: 4, pool: ["LOCK", "NOSE", "FIGHT", "BRAIN", "SIDE", "BANJO"] },
+  { cat: "Things you can charge", diff: 4, pool: ["PHONE", "BATTERY", "CARD", "BULL", "CRIME", "FEE"] },
+  { cat: "Things that bounce", diff: 4, pool: ["BALL", "CHECK", "BABY", "IDEA", "EMAIL", "KANGAROO"] },
+  { cat: "Things you can file", diff: 4, pool: ["NAILS", "TAXES", "COMPLAINT", "REPORT", "CLAIM", "LAWSUIT"] },
+  { cat: "Things with a neck", diff: 4, pool: ["BOTTLE", "GUITAR", "GIRAFFE", "SHIRT", "WOODS", "SWAN"] },
+  { cat: "Things with an eye", diff: 4, pool: ["NEEDLE", "STORM", "POTATO", "HURRICANE", "TIGER", "BULL"] },
+  { cat: "Things with a mouth", diff: 4, pool: ["RIVER", "BOTTLE", "CAVE", "VOLCANO", "JAR", "HARBOR"] },
+  { cat: "Things with a tongue", diff: 4, pool: ["SHOE", "BELL", "FLAME", "WAGON", "SNAKE", "GLACIER"] },
+  { cat: "Things with a heart", diff: 4, pool: ["ARTICHOKE", "LETTUCE", "CITY", "PALM", "GOLD", "LION"] },
+  { cat: "Things with a tail", diff: 4, pool: ["COMET", "KITE", "COIN", "PLANE", "SHIRT", "DOG"] },
+  { cat: "Things you can tip", diff: 4, pool: ["WAITER", "SCALE", "HAT", "COW", "CANOE", "ICEBERG"] },
+  { cat: "Things you can blow", diff: 4, pool: ["BUBBLE", "FUSE", "WHISTLE", "KISS", "MIND", "COVER"] },
+  { cat: "Things you can burn", diff: 4, pool: ["BRIDGE", "CALORIES", "TOAST", "RUBBER", "DISC", "INCENSE"] },
+  { cat: "Things you can beat", diff: 4, pool: ["EGGS", "DRUM", "PATH", "RECORD", "ODDS", "TRAFFIC"] },
+  { cat: "Things you can stuff", diff: 4, pool: ["TURKEY", "ANIMAL", "CRUST", "NOSE", "SHIRT", "BALLOT"] },
+  { cat: "Things you can roll", diff: 4, pool: ["DICE", "EYES", "CARPET", "SLEEVES", "CREDITS", "DOUGH"] },
+  { cat: "Things you can flip", diff: 4, pool: ["COIN", "PANCAKE", "SWITCH", "HOUSE", "TABLE", "LID"] },
+  { cat: "Things you can squeeze", diff: 4, pool: ["LEMON", "TRIGGER", "BUDGET", "HAND", "TUBE", "ORANGE"] },
+  { cat: "Things you can wrap", diff: 4, pool: ["GIFT", "BURRITO", "MUMMY", "ANKLE", "MEETING", "TOWEL"] },
+  { cat: "Things you can tie", diff: 4, pool: ["KNOT", "SCORE", "TONGUE", "SHOELACE", "GAME", "RIBBON"] },
+  { cat: "Things that melt", diff: 4, pool: ["ICE", "BUTTER", "HEART", "CHEESE", "SNOW", "CRAYON"] },
+  { cat: "Things that rise", diff: 4, pool: ["SUN", "DOUGH", "TIDE", "PHOENIX", "SMOKE", "STEAM"] },
+  { cat: "Things that fall", diff: 4, pool: ["RAIN", "NIGHT", "ROME", "LEAVES", "PRICES", "STAR"] },
+  { cat: "Things that fly", diff: 4, pool: ["TIME", "KITE", "FLAG", "SPARKS", "RUMORS", "COLORS"] },
+  { cat: "Things that swing", diff: 4, pool: ["PENDULUM", "VOTER", "MOOD", "BAT", "GATE", "JAZZ"] },
+  { cat: "Things that stick", diff: 4, pool: ["GLUE", "LANDING", "MAGNET", "NICKNAME", "GUM", "BURR"] },
+  { cat: "Things that spin", diff: 4, pool: ["TOP", "WHEEL", "YARN", "TALE", "CLASS", "PLATES"] },
+  { cat: "Hot ___", diff: 4, pool: ["DOG", "TOPIC", "SAUCE", "STREAK", "POTATO", "SEAT"] },
+  { cat: "Cold ___", diff: 4, pool: ["SHOULDER", "TURKEY", "CASE", "FEET", "WAR", "CUTS"] },
+  { cat: "Sweet ___", diff: 4, pool: ["TOOTH", "TALK", "SIXTEEN", "SPOT", "CORN", "HEART"] },
+  { cat: "High ___", diff: 4, pool: ["NOON", "FIVE", "SCHOOL", "HORSE", "ROAD", "TIDE"] },
+  { cat: "Low ___", diff: 4, pool: ["PROFILE", "BLOW", "KEY", "TIDE", "BALL", "RIDER"] },
+  { cat: "Open ___", diff: 4, pool: ["BOOK", "MIND", "BAR", "DOOR", "SEASON", "MIC"] },
+  { cat: "Free ___", diff: 4, pool: ["RANGE", "FALL", "THROW", "SPIRIT", "LANCE", "WILL"] },
+  { cat: "Full ___", diff: 4, pool: ["MOON", "HOUSE", "STOP", "THROTTLE", "CIRCLE", "PLATE"] },
+  { cat: "Half ___", diff: 4, pool: ["TIME", "BAKED", "MOON", "BROTHER", "PIPE", "TRUTH"] },
+  { cat: "Things that can be flat", diff: 4, pool: ["TIRE", "NOTE", "RATE", "SODA", "FEET", "IRON"] },
+  { cat: "Things with wings", diff: 4, pool: ["PLANE", "ANGEL", "EAGLE", "BUILDING", "STAGE", "CHICKEN"] },
+  { cat: "Things with branches", diff: 4, pool: ["TREE", "BANK", "GOVERNMENT", "RIVER", "FAMILY", "MILITARY"] },
+  { cat: "Things with bark", diff: 4, pool: ["TREE", "DOG", "SEAL", "CINNAMON", "WILLOW", "BIRCH"] },
+  { cat: "Things with layers", diff: 4, pool: ["ONION", "CAKE", "EARTH", "LASAGNA", "PARFAIT", "OZONE"] },
+  { cat: "Things with strings", diff: 4, pool: ["GUITAR", "PUPPET", "KITE", "RACKET", "CHEESE", "BIKINI"] },
+  { cat: "Things with poles", diff: 4, pool: ["EARTH", "FLAG", "SKI", "BARBER", "FISHING", "TENT"] },
+  { cat: "Things with belts", diff: 4, pool: ["PANTS", "KARATE", "SEAT", "CONVEYOR", "ASTEROID", "CHAMPION"] },
+  { cat: "Things with caps", diff: 4, pool: ["KNEE", "BOTTLE", "MUSHROOM", "PEN", "ICE", "NIGHT"] },
+  { cat: "Things with cones", diff: 4, pool: ["PINE", "TRAFFIC", "SNOW", "WAFFLE", "VOLCANO", "EYE"] },
+  { cat: "Things with shells", diff: 4, pool: ["TACO", "TURTLE", "EGG", "PASTA", "SNAIL", "PEANUT"] },
+  { cat: "Things with banks", diff: 4, pool: ["RIVER", "BLOOD", "FOOD", "DATA", "SNOW", "PIGGY"] },
+  { cat: "Things with bars", diff: 4, pool: ["SOAP", "CANDY", "SALAD", "CROW", "JAIL", "HANDLE"] },
+  { cat: "Things with locks", diff: 4, pool: ["DOOR", "HAIR", "CANAL", "BIKE", "DREAD", "AIR"] },
+  { cat: "Things with bridges", diff: 4, pool: ["NOSE", "GUITAR", "DENTAL", "LONDON", "SHIP", "SONG"] },
+  { cat: "Things with horns", diff: 4, pool: ["CAR", "BULL", "UNICORN", "RHINO", "BRASS", "DILEMMA"] },
+  { cat: "Things you can grill", diff: 4, pool: ["BURGER", "CHEESE", "WITNESS", "SUSPECT", "CORN", "ONION"] },
+  { cat: "Things you can toast", diff: 4, pool: ["BREAD", "MARSHMALLOW", "BRIDE", "NUTS", "BAGEL", "HERO"] },
+  { cat: "Things that can be long", diff: 4, pool: ["SHOT", "STORY", "FACE", "WEEKEND", "DIVISION", "JOHNS"] },
+  { cat: "Things that can be short", diff: 4, pool: ["STORY", "FUSE", "CHANGE", "STOP", "CIRCUIT", "BREAD"] },
+  { cat: "Things you can cut", diff: 4, pool: ["CORNERS", "DEAL", "TENSION", "CLASS", "LINE", "TEETH"] },
+  // Multiplayer-only expansion (mp: true) — never used in seeded levels/daily
+  { cat: "Citrus fruits", diff: 1, mp: true, pool: ["LEMON", "LIME", "ORANGE", "GRAPEFRUIT", "TANGERINE", "POMELO"] },
+  { cat: "Root vegetables", diff: 1, mp: true, pool: ["POTATO", "BEET", "PARSNIP", "GINGER", "YAM", "RUTABAGA"] },
+  { cat: "Coins", diff: 1, mp: true, pool: ["PENNY", "NICKEL", "DIME", "QUARTER", "FARTHING", "DOUBLOON"] },
+  { cat: "Months", diff: 1, mp: true, pool: ["APRIL", "JUNE", "AUGUST", "MARCH", "OCTOBER", "JANUARY"] },
+  { cat: "Sewing kit", diff: 1, mp: true, pool: ["NEEDLE", "THREAD", "THIMBLE", "BOBBIN", "BUTTON", "SEAM"] },
+  { cat: "Garden tools", diff: 1, mp: true, pool: ["RAKE", "HOE", "TROWEL", "SHEARS", "SPADE", "PRUNER"] },
+  { cat: "Sea vessels", diff: 1, mp: true, pool: ["YACHT", "KAYAK", "DINGHY", "SCHOONER", "TUGBOAT", "GONDOLA"] },
+  { cat: "Keyboard keys", diff: 1, mp: true, pool: ["SHIFT", "ENTER", "ESCAPE", "TAB", "SPACE", "DELETE"] },
+  { cat: "Bakery items", diff: 1, mp: true, pool: ["CROISSANT", "DONUT", "SCONE", "DANISH", "STRUDEL", "MACARON"] },
+  { cat: "Birthday party things", diff: 1, mp: true, pool: ["BALLOON", "CANDLES", "CONFETTI", "PINATA", "STREAMERS", "CLOWN"] },
+  { cat: "Famous Steves", diff: 2, mp: true, pool: ["JOBS", "CARELL", "MARTIN", "IRWIN", "HARVEY", "AUSTIN"] },
+  { cat: "Famous Johns", diff: 2, mp: true, pool: ["LEGEND", "CENA", "WICK", "DENVER", "MAYER", "ADAMS"] },
+  { cat: "Roman gods", diff: 2, mp: true, pool: ["JUPITER", "NEPTUNE", "MARS", "VENUS", "JUNO", "PLUTO"] },
+  { cat: "Winter Olympic sports", diff: 2, mp: true, pool: ["LUGE", "BIATHLON", "CURLING", "SKELETON", "BOBSLED", "SLALOM"] },
+  { cat: "Wine varieties", diff: 2, mp: true, pool: ["MERLOT", "CHIANTI", "RIESLING", "MALBEC", "SHIRAZ", "ROSE"] },
+  { cat: "Famous Emmas", diff: 2, mp: true, pool: ["STONE", "WATSON", "THOMPSON", "ROBERTS", "CHAMBERLAIN", "WOODHOUSE"] },
+  { cat: "Programming languages", diff: 2, mp: true, pool: ["PYTHON", "JAVA", "RUBY", "RUST", "SWIFT", "BASIC"] },
+  { cat: "Units of measure", diff: 2, mp: true, pool: ["OUNCE", "FATHOM", "KNOT", "ACRE", "CARAT", "LEAGUE"] },
+  { cat: "Mythical places", diff: 2, mp: true, pool: ["ATLANTIS", "VALHALLA", "EDEN", "CAMELOT", "UTOPIA", "OLYMPUS"] },
+  { cat: "Candy bars", diff: 2, mp: true, pool: ["SNICKERS", "TWIX", "CRUNCH", "BOUNTY", "PAYDAY", "MARS"] },
+  { cat: "___ party", diff: 3, mp: true, pool: ["BLOCK", "SEARCH", "SLUMBER", "THIRD", "PITY", "DANCE"] },
+  { cat: "___ club", diff: 3, mp: true, pool: ["BOOK", "NIGHT", "GLEE", "COUNTRY", "FAN", "YACHT"] },
+  { cat: "___ money", diff: 3, mp: true, pool: ["SEED", "HUSH", "POCKET", "PRIZE", "GAS", "BLOOD"] },
+  { cat: "___ code", diff: 3, mp: true, pool: ["DRESS", "ZIP", "BAR", "MORSE", "AREA", "SOURCE"] },
+  { cat: "___ test", diff: 3, mp: true, pool: ["TASTE", "ACID", "LITMUS", "CRASH", "SCREEN", "STRESS"] },
+  { cat: "___ note", diff: 3, mp: true, pool: ["FOOT", "KEY", "STICKY", "RANSOM", "MENTAL", "HIGH"] },
+  { cat: "___ year", diff: 3, mp: true, pool: ["LEAP", "LIGHT", "GAP", "FISCAL", "FRESHMAN", "NEW"] },
+  { cat: "___ sign", diff: 3, mp: true, pool: ["STOP", "PEACE", "DOLLAR", "NEON", "VITAL", "ZODIAC"] },
+  { cat: "___ wave", diff: 3, mp: true, pool: ["HEAT", "TIDAL", "MICRO", "CRIME", "SOUND", "BRAIN"] },
+  { cat: "___ engine", diff: 3, mp: true, pool: ["SEARCH", "FIRE", "STEAM", "JET", "DIESEL", "ROCKET"] },
+  { cat: "Dead ___", diff: 4, mp: true, pool: ["END", "HEAT", "RINGER", "WEIGHT", "LIFT", "BOLT"] },
+  { cat: "Things you can drop", diff: 4, mp: true, pool: ["HINT", "BALL", "BEAT", "ANCHOR", "NAME", "MIC"] },
+  { cat: "Things you can hold", diff: 4, mp: true, pool: ["GRUDGE", "BREATH", "DOOR", "MEETING", "HANDS", "FORT"] },
+  { cat: "Things you can lose", diff: 4, mp: true, pool: ["TRACK", "FACE", "TOUCH", "NERVE", "COOL", "MARBLES"] },
+  { cat: "Things you can save", diff: 4, mp: true, pool: ["FACE", "GRACE", "DATE", "SEAT", "PLANET", "BACON"] },
+  { cat: "Things you can serve", diff: 4, mp: true, pool: ["TIME", "JUSTICE", "ACE", "PURPOSE", "COUNTRY", "DINNER"] },
+  { cat: "Things you can run", diff: 4, mp: true, pool: ["ERRAND", "BATH", "MILE", "FEVER", "TAB", "CAMPAIGN"] },
+  { cat: "Things that can be loaded", diff: 4, mp: true, pool: ["DICE", "QUESTION", "TRUCK", "NACHOS", "STATEMENT", "BASES"] },
+  { cat: "Things that can be golden", diff: 4, mp: true, pool: ["RETRIEVER", "TICKET", "HOUR", "RULE", "GATE", "RATIO"] },
+  { cat: "Things that can be silver", diff: 4, mp: true, pool: ["SCREEN", "LINING", "SPOON", "MEDAL", "FOX", "TONGUE"] }
+];
+
+// Categories sharing a theme never appear on the same board. This prevents
+// "mushy" boards (8 animal words) and accidental alternate groupings that
+// would make a player's wrong answer feel right. Same-tier categories can
+// never co-occur anyway, so only cross-tier overlaps need tagging.
+const THEMES = {
+  "Zoo animals": "animal", "Farm animals": "animal", "Insects": "animal", "Reptiles": "animal",
+  "Ocean animals": "animal", "Dog breeds": "animal", "Birds": "animal", "Baby animals": "animal",
+  "Mythical creatures": "animal", "Dinosaurs": "animal", "Cat breeds": "animal", "Yoga poses": "animal",
+  "Pizza toppings": "food", "Breakfast foods": "food", "Fruits": "food", "Vegetables": "food",
+  "Desserts": "food", "Pies": "food", "Candy": "food", "Cheeses": "food", "Breads": "food",
+  "Soups": "food", "Sandwiches": "food", "Salad fixings": "food", "Nuts": "food", "Grains": "food",
+  "Dairy products": "food", "Condiments": "food", "Berries": "food", "Beverages": "food",
+  "Coffee orders": "food", "Teas": "food", "Cocktails": "food", "Sushi terms": "food",
+  "Mexican dishes": "food", "Indian dishes": "food", "Pasta shapes": "food", "Herbs & spices": "food",
+  "Things you can grill": "food", "Things that melt": "food", "Things you can toast": "food",
+  "Things with layers": "food", "Things with shells": "food",
+  "US states": "place", "World capitals": "place", "Islands": "place", "Famous mountains": "place",
+  "Rivers": "place", "Bodies of water": "place", "Landforms": "place", "Olympic host cities": "place",
+  "Body joints & parts": "body", "Bones": "body", "Organs": "body",
+  "Planets": "space", "Space objects": "space", "Constellations": "space",
+  "Storms": "weather", "Wet weather": "weather", "Cloud types": "weather",
+  "Sports": "sport", "Martial arts": "sport", "Track & field events": "sport",
+  "Board games": "boardgame", "Monopoly things": "boardgame", "Clue (the game)": "boardgame",
+  "Citrus fruits": "food", "Root vegetables": "food", "Bakery items": "food",
+  "Wine varieties": "food", "Candy bars": "food",
+  "Roman gods": "space", "Winter Olympic sports": "sport"
+};
+
+function buildPuzzle(rng) {
+  // Seeded builds (levels, daily) exclude mp-only categories so adding
+  // multiplayer content never reshuffles the frozen level puzzles.
+  const mpOk = !rng;
+  rng = rng || Math.random;
+  for (let attempt = 0; attempt < 80; attempt++) {
+    const cats = [1, 2, 3, 4].map(d => {
+      const tier = BANK.filter(c => c.diff === d && (mpOk || !c.mp));
+      return tier[Math.floor(rng() * tier.length)];
+    });
+    // reject boards where two categories share a theme
+    const themes = cats.map(c => THEMES[c.cat]).filter(Boolean);
+    if (new Set(themes).size !== themes.length) continue;
+    const candidate = cats.map(c => ({ cat: c.cat, diff: c.diff, words: shuffle(c.pool, rng).slice(0, 4) }));
+    const all = candidate.flatMap(c => c.words);
+    if (new Set(all).size === 16) return candidate; // no word collisions across categories
+  }
+  return null; // statistically unreachable
+}
+
+// Deterministic RNG: the same seed always produces the same puzzle,
+// so level 128 is level 128 forever, and the daily is shared by date.
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+
+function dateStr(d) {
+  d = d || new Date();
+  return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+}
+
+// --- Saved progress (stays on this device) ---
+const STORE_KEY = "flock-save";
+let save;
+try { save = JSON.parse(localStorage.getItem(STORE_KEY)) || {}; } catch (e) { save = {}; }
+save.levels = save.levels || {};   // { levelNumber: true }
+save.daily = save.daily || { streak: 0, completed: {} };
+save.rivalry = save.rivalry || {}; // { TEAM NAME: wins }
+save.progress = save.progress || {}; // mid-game state per level/daily, cleared on completion
+save.dealt = save.dealt || [];       // last 100 categories dealt in multiplayer, avoided across sessions
+function persist() {
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(save)); } catch (e) { /* private browsing */ }
+}
+
+let teams = [];        // { name, score, pos }
+let currentTeam = 0;
+let puzzle = null;     // array of categories
+let tiles = [];        // remaining words on the board
+let selected = [];     // selected words
+let solvedCount = 0;
+
+// --- Multiplayer setup (2-4 teams, face-off race + board) ---
+let teamCount = 2;
+
+function setTeamCount(n) {
+  teamCount = n;
+  document.querySelectorAll("#teamCountSeg button").forEach(b =>
+    b.classList.toggle("sel", +b.textContent === n));
+  renderNameInputs();
+}
+
+function renderNameInputs() {
+  const box = document.getElementById("teamNames");
+  const old = [...box.querySelectorAll("input")].map(el => el.value);
+  box.innerHTML = '<div class="setup-label">Team Names</div>';
+  for (let i = 0; i < teamCount; i++) {
+    const input = document.createElement("input");
+    input.className = "team-name-input";
+    input.id = "tn" + i;
+    input.placeholder = "Team " + (i + 1);
+    input.maxLength = 16;
+    input.value = old[i] || "";
+    box.appendChild(input);
+  }
+}
+renderNameInputs();
+
+// Phones seat only 2 teams — no room for the 3-4 player card-table layout
+if (IS_PHONE) {
+  document.querySelectorAll("#teamCountSeg button").forEach(b => {
+    if (+b.textContent > 2) b.disabled = true;
+  });
+}
+
+// --- Game ---
+function startGame() {
+  teams = [];
+  for (let i = 0; i < teamCount; i++) {
+    const v = document.getElementById("tn" + i).value.trim();
+    teams.push({ name: v || "Team " + (i + 1), score: 0, pos: 0 });
+  }
+  startRace();
+}
+
+// gameCtx tracks what kind of game is running so endGame knows what to record
+let gameCtx = { type: "multi" };
+
+const LEVELS_TOTAL = 1000, PAGE_SIZE = 50;
+let levelPage = 0;
+
+function startLevel(n) {
+  gameCtx = { type: "level", n: n };
+  teams = [{ name: "You", score: 0 }];
+  puzzle = buildPuzzle(mulberry32(104729 * n + 4242));
+  puzzle.forEach(c => { c.solved = false; });
+  initTurnBoard();
+  banner(applyProgress()
+    ? "Welcome back — " + solvedCount + " of 4 found"
+    : "Level " + n + " — find the four groups!");
+}
+
+function startDaily() {
+  gameCtx = { type: "daily", date: dateStr() };
+  teams = [{ name: "You", score: 0 }];
+  const seed = parseInt(dateStr().replace(/-/g, ""), 10);
+  puzzle = buildPuzzle(mulberry32(seed * 3 + 1));
+  puzzle.forEach(c => { c.solved = false; });
+  initTurnBoard();
+  banner(applyProgress()
+    ? "Welcome back — " + solvedCount + " of 4 found"
+    : "Daily puzzle — " + dateStr());
+}
+
+// --- Mid-game progress (so a half-finished level survives closing the app) ---
+function progressKey() {
+  if (gameCtx.type === "level") return "level-" + gameCtx.n;
+  if (gameCtx.type === "daily") return "daily-" + gameCtx.date;
+  return null;
+}
+
+function saveProgress() {
+  const key = progressKey();
+  if (!key) return;
+  save.progress[key] = {
+    solved: puzzle.filter(c => c.solved).sort((a, b) => a.solvedOrder - b.solvedOrder).map(c => c.cat),
+    score: teams[0].score
+  };
+  persist();
+}
+
+// Returns true if saved progress was restored onto the freshly built board
+function applyProgress() {
+  const key = progressKey();
+  const p = key && save.progress[key];
+  if (!p || !p.solved.length && !p.score) return false;
+  p.solved.forEach(name => {
+    const c = puzzle.find(x => x.cat === name);
+    if (!c || c.solved) return;
+    c.solved = true;
+    c.solvedOrder = solvedCount++;
+    c.solvedBy = teams[0].name;
+    tiles = tiles.filter(w => !c.words.includes(w));
+  });
+  teams[0].score = p.score;
+  renderScoreboard();
+  renderBoard();
+  return true;
+}
+
+function goHome() {
+  renderHome();
+  showScreen("homeScreen");
+}
+
+function calIconSVG(color) {
+  return '<svg width="30" height="30" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="3" fill="none" stroke="' + color + '" stroke-width="2"/><path d="M3 9 H21" stroke="' + color + '" stroke-width="2"/><path d="M8 3 V6 M16 3 V6" stroke="' + color + '" stroke-width="2" stroke-linecap="round"/><circle cx="9" cy="14" r="1.5" fill="' + color + '"/><circle cx="15" cy="14" r="1.5" fill="' + color + '"/></svg>';
+}
+function levelsCleared() {
+  let n = 0;
+  for (const k in save.levels) { if (save.levels[k]) n++; }
+  return n;
+}
+
+function renderHome() {
+  const done = !!save.daily.completed[dateStr()];
+  const streak = save.daily.streak || 0;
+  const wire = [
+    { x: 42, c: "#a2457e", f: "tufted" }, { x: 108, c: "#069494", f: "sleepy" },
+    { x: 174, c: "#FF8243", f: "crest" }, { x: 240, c: "#E2A32D", f: "brow" }
+  ];
+  let w = '<svg viewBox="0 0 282 74" style="width:100%;display:block">';
+  w += '<line x1="8" y1="56" x2="274" y2="56" stroke="#2b2b2b" stroke-width="2.5" stroke-linecap="round"/>';
+  wire.forEach(b => { w += '<g transform="translate(' + b.x + ',34) scale(0.74)">' + owlInner(b.f, b.c) + "</g>"; });
+  w += "</svg>";
+  document.getElementById("birdWire").innerHTML = w;
+  document.getElementById("menuCalIcon").innerHTML = calIconSVG("#fff");
+  document.getElementById("menuLevelsOwl").innerHTML = owlSVG("#069494", 34, "sleepy");
+  document.getElementById("menuMultiOwl").innerHTML = owlSVG("#FF8243", 34, "crest");
+  document.getElementById("menuLevelsCount").textContent = levelsCleared() + " / " + LEVELS_TOTAL;
+  document.getElementById("dailyStatus").innerHTML = streak
+    ? '🔥 <span>' + streak + "-day streak</span>" + (done ? ' <span class="dot">·</span> <span>solved today</span>' : "")
+    : (done ? "Solved today" : "New puzzle every day");
+}
+
+function openDaily() {
+  gameCtx = { type: "daily", date: dateStr() };
+  renderDaily();
+  showScreen("dailyScreen");
+}
+function renderDaily() {
+  const now = new Date();
+  const dows = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"];
+  const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+  document.getElementById("dailyDow").textContent = dows[now.getDay()];
+  document.getElementById("dailyMd").textContent = months[now.getMonth()] + " " + now.getDate();
+  const epoch = Date.UTC(2025, 0, 1);
+  const no = Math.floor((Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()) - epoch) / 86400000) + 1;
+  document.getElementById("dailyNo").textContent = "Puzzle No. " + no;
+  document.getElementById("streakCount").textContent = save.daily.streak || 0;
+  // Mon-anchored week strip; a pip lights if that day's puzzle was completed
+  const labels = ["M", "T", "W", "T", "F", "S", "S"];
+  const todayIdx = (now.getDay() + 6) % 7;
+  const monday = new Date(now); monday.setDate(now.getDate() - todayIdx);
+  let html = "";
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(monday); d.setDate(monday.getDate() + i);
+    const on = !!save.daily.completed[dateStr(d)];
+    html += '<div class="streak-day"><div class="pip ' + (on ? "on" : "off") + '">' + (on ? "✓" : "·") + '</div><div class="lbl">' + labels[i] + "</div></div>";
+  }
+  document.getElementById("streakDays").innerHTML = html;
+  document.getElementById("dailyOwl").innerHTML = owlSVG("#069494", 50, "wide");
+}
+
+function openLevels() {
+  renderLevels();
+  showScreen("levelsScreen");
+}
+
+function renderLevels() {
+  const grid = document.getElementById("levelGrid");
+  grid.innerHTML = "";
+  const doneColors = ["#FCE883", "#069494", "#FF8243", "#FFC0CB", "#a2457e", "#E2A32D"];
+  const doneText   = ["#2b2b2b", "#ffffff", "#2b2b2b", "#2b2b2b", "#ffffff", "#2b2b2b"];
+  let firstUndone = LEVELS_TOTAL + 1;
+  for (let n = 1; n <= LEVELS_TOTAL; n++) { if (!save.levels[n]) { firstUndone = n; break; } }
+  const start = levelPage * PAGE_SIZE + 1;
+  for (let n = start; n < start + PAGE_SIZE && n <= LEVELS_TOTAL; n++) {
+    const node = document.createElement("div");
+    node.className = "lv-node";
+    const done = !!save.levels[n];
+    const current = !done && n === firstUndone;
+    const ci = (n - 1) % doneColors.length;
+    let inner = "";
+    if (current) inner += '<div class="lv-owl">' + owlSVG("#a2457e", 36, "tufted") + "</div>";
+    if (done) inner += '<div class="lv-circle done" style="background:' + doneColors[ci] + ";color:" + doneText[ci] + '">' + n + '<span class="lv-star">★</span></div>';
+    else if (current) inner += '<div class="lv-circle current">' + n + "</div>";
+    else inner += '<div class="lv-circle todo">' + n + "</div>";
+    node.innerHTML = inner;
+    node.querySelector(".lv-circle").onclick = () => startLevel(n);
+    grid.appendChild(node);
+  }
+  document.getElementById("pgLabel").textContent = start + "–" + Math.min(start + PAGE_SIZE - 1, LEVELS_TOTAL);
+  document.getElementById("pgPrev").disabled = levelPage === 0;
+  document.getElementById("pgNext").disabled = (levelPage + 1) * PAGE_SIZE >= LEVELS_TOTAL;
+  document.getElementById("levelsCountPill").textContent = levelsCleared() + " / " + LEVELS_TOTAL;
+}
+document.getElementById("pgPrev").onclick = () => { levelPage--; renderLevels(); };
+document.getElementById("pgNext").onclick = () => { levelPage++; renderLevels(); };
+
+function openMulti() {
+  gameCtx = { type: "multi" };
+  const rb = document.getElementById("rivalryBoard");
+  const entries = Object.entries(save.rivalry).sort((a, b) => b[1] - a[1]);
+  rb.textContent = entries.length
+    ? "All-time wins — " + entries.map(e => e[0] + ": " + e[1]).join(" · ")
+    : "";
+  showScreen("setupScreen");
+}
+
+function recordWin(name) {
+  const key = name.trim().toUpperCase();
+  save.rivalry[key] = (save.rivalry[key] || 0) + 1;
+  persist();
+}
+
+function initTurnBoard() {
+  tiles = shuffle(puzzle.flatMap(c => c.words));
+  selected = [];
+  solvedCount = 0;
+  currentTeam = 0;
+  document.getElementById("gameControls").style.display = "";
+  document.getElementById("continueBtn").style.display = "none";
+  showScreen("gameScreen");
+  renderScoreboard();
+  renderBoard();
+}
+
+function shuffle(arr, rng) {
+  rng = rng || Math.random;
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function showScreen(id) {
+  document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
+  document.getElementById(id).classList.add("active");
+}
+
+// Solo header: score in the top bar, title from the game context
+function renderScoreboard() {
+  const score = document.getElementById("gameScore");
+  if (score) score.textContent = teams[0].score;
+  const title = document.getElementById("gameTitle");
+  if (title) title.textContent =
+    gameCtx.type === "daily" ? "Daily" : gameCtx.type === "level" ? "Level " + gameCtx.n : "Puzzle";
+}
+
+function shuffleTiles() {
+  tiles = shuffle(tiles);
+  renderBoard();
+}
+
+function renderBoard() {
+  const board = document.getElementById("board");
+  board.innerHTML = "";
+  // Solved categories pinned on top
+  puzzle.filter(c => c.solved).sort((a, b) => a.solvedOrder - b.solvedOrder).forEach(c => {
+    const row = document.createElement("div");
+    row.className = "solved-row" + (c.justSolved ? " pop-in" : "");
+    c.justSolved = false;
+    row.style.background = DIFF_COLORS[c.diff];
+    row.style.color = DIFF_TEXT[c.diff];
+    row.innerHTML =
+      '<div class="cat">' + esc(c.cat) + "</div>" +
+      '<div class="words">' + c.words.join(", ") + "</div>";
+    board.appendChild(row);
+  });
+  tiles.forEach(w => {
+    const t = document.createElement("div");
+    t.className = "tile" + (selected.includes(w) ? " sel" : "");
+    t.textContent = w;
+    t.onclick = () => toggleTile(w);
+    board.appendChild(t);
+  });
+  document.getElementById("submitBtn").disabled = selected.length !== 4;
+}
+
+function toggleTile(w) {
+  if (selected.includes(w)) selected = selected.filter(x => x !== w);
+  else if (selected.length < 4) selected.push(w);
+  else return;
+  SFX.tap();
+  renderBoard();
+}
+
+function clearSelection() {
+  selected = [];
+  renderBoard();
+}
+
+// Solo (levels and daily): groups score by difficulty, wrong guesses cost 1
+function submitGroup() {
+  if (selected.length !== 4) return;
+  const match = puzzle.find(c => !c.solved && c.words.every(w => selected.includes(w)));
+  if (match) {
+    SFX.correct();
+    match.solved = true;
+    match.justSolved = true;
+    match.solvedOrder = solvedCount++;
+    match.solvedBy = teams[0].name;
+    teams[0].score += match.diff;
+    tiles = tiles.filter(w => !match.words.includes(w));
+    selected = [];
+    saveProgress();
+    if (solvedCount === 4) {
+      renderScoreboard();
+      renderBoard();
+      banner("All four found! 🎉");
+      document.getElementById("gameControls").style.display = "none";
+      document.getElementById("continueBtn").style.display = "block";
+      return;
+    }
+    renderScoreboard();
+    renderBoard();
+    banner("+" + match.diff + " — keep going!");
+  } else {
+    SFX.wrong();
+    const oneAway = puzzle.some(c => !c.solved && c.words.filter(w => selected.includes(w)).length === 3);
+    selected = [];
+    const board = document.getElementById("board");
+    board.classList.add("shake");
+    setTimeout(() => board.classList.remove("shake"), 350);
+    teams[0].score -= 1;
+    saveProgress();
+    renderScoreboard();
+    renderBoard();
+    banner(oneAway ? "So close — one away! (−1)" : "Not a group (−1). Try again!");
+  }
+}
+
+function banner(msg) {
+  document.getElementById("turnBanner").textContent = msg;
+  const toast = document.getElementById("toast");
+  toast.textContent = msg;
+  toast.classList.add("show");
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => toast.classList.remove("show"), 2200);
+}
+
+// --- Multiplayer: race rounds + board game ---
+// Each round, both teams race the SAME 16-word puzzle on a split screen.
+// Round winner (highest score, finisher breaks ties) rolls the die and moves
+// their pawn on the track between the boards. First to FINISH wins the game.
+let race = []; // per team: { tiles, selected, solved: [{cat,diff,words,pop}] }
+let skipVotes = [false, false]; // each team's skip switch; ALL on swaps the unsolved groups
+
+const GRID_N = IS_PHONE ? 8 : 11;           // 8x8 (28 spaces) on phone, 11x11 (40) on iPad
+const SNAKE_COLS = 4;                        // phone: serpentine board, 4 wide x 7 tall
+const TRACK_CELLS = 4 * (GRID_N - 1);       // phone: 28 (START + 26 + FINISH); iPad: 40
+const FINISH_POS = TRACK_CELLS - 1;
+// ★ bonus spaces every 6th cell around the loop (phone: 6,12,18,24; iPad: +30,36)
+const SPECIAL_CELLS = (() => {
+  const s = new Set();
+  for (let i = 6; i < TRACK_CELLS - 1; i += 6) s.add(i);
+  return s;
+})();
+
+let roundWinner = 0;
+let needleRot = 90;   // spinner needle angle (deg); 90 points straight up
+let spinCount = 0;    // accumulated full turns so each spin keeps rotating forward
+let roundNum = 1;     // shown in the ROUND badge
+let spinArmed = false;
+
+let usedCats = new Set(); // categories already dealt this game — never repeat within a game
+
+function startRace() {
+  teams.forEach(t => { t.pos = 0; });
+  spinArmed = false;
+  roundNum = 1;
+  usedCats = new Set();
+  showBoard("", "Start Round 1 ▶", beginRound);
+}
+
+// The macro view: track, pawns, spinner, and (between games) a start button
+function showBoard(bannerText, btnLabel, btnHandler) {
+  showScreen("boardScreen");
+  document.getElementById("boardBanner").textContent = bannerText;
+  document.getElementById("roundBadge").textContent = "ROUND " + roundNum;
+  renderTrack();
+  renderWheel();
+  renderLegend();
+  const btn = document.getElementById("boardBtn");
+  btn.style.display = btnHandler ? "inline-block" : "none";
+  btn.textContent = btnLabel || "";
+  btn.onclick = btnHandler;
+  btn.disabled = false;
+  if (spinArmed) startIdleSpin(); else stopIdleSpin();
+}
+
+// Countdown 3..2..1..GO! over the freshly dealt boards, then play begins
+// Seat order around the iPad: team 1 bottom, team 2 top, team 3 left, team 4 right.
+function makePanel(i, cls) {
+  const p = document.createElement("div");
+  p.className = "race-panel" + (cls ? " " + cls : "");
+  p.id = "panel" + i;
+  return p;
+}
+
+function beginRound() {
+  const row = document.getElementById("raceRow");
+  row.innerHTML = "";
+  if (teams.length === 2) {
+    row.className = "race-row face-off";
+    row.appendChild(makePanel(0, "flipped")); // rotated toward the team across the table
+    row.appendChild(makePanel(1));
+  } else {
+    // Card table: team 2 upside down on top, teams 3/4 sideways in the middle
+    // band, team 1 upright on the bottom
+    row.className = "race-row quad";
+    row.appendChild(makePanel(1, "flipped"));
+    const mid = document.createElement("div");
+    mid.className = "quad-mid";
+    const left = document.createElement("div");
+    left.className = "quad-side";
+    left.appendChild(makePanel(2));
+    mid.appendChild(left);
+    if (teams.length === 4) {
+      const right = document.createElement("div");
+      right.className = "quad-side seat-right";
+      right.appendChild(makePanel(3));
+      mid.appendChild(right);
+    }
+    row.appendChild(mid);
+    row.appendChild(makePanel(0));
+  }
+  newRaceRound();
+  showScreen("raceScreen");
+  countdown();
+}
+
+function newRaceRound() {
+  // Fresh 16 words every round. Never repeat a category from this game, and
+  // avoid the last 100 dealt across all past games on this device.
+  const recent = new Set(save.dealt);
+  puzzle = null;
+  for (let a = 0; a < 60 && !puzzle; a++) {
+    const cand = buildPuzzle();
+    if (!cand.some(c => usedCats.has(c.cat) || recent.has(c.cat))) puzzle = cand;
+  }
+  // Bank too depleted for both filters: drop the cross-session one, keep the in-game guarantee
+  for (let a = 0; a < 40 && !puzzle; a++) {
+    const cand = buildPuzzle();
+    if (!cand.some(c => usedCats.has(c.cat))) puzzle = cand;
+  }
+  if (!puzzle) { usedCats.clear(); puzzle = buildPuzzle(); } // marathon game: bank cycled, start over
+  puzzle.forEach(c => usedCats.add(c.cat));
+  save.dealt = save.dealt.concat(puzzle.map(c => c.cat)).slice(-100);
+  persist();
+  skipVotes = teams.map(() => false);
+  race = teams.map(() => ({
+    tiles: shuffle(puzzle.flatMap(c => c.words)),
+    selected: [],
+    solved: [],
+    lockedUntil: 0
+  }));
+  race.forEach((r, i) => renderPanel(i));
+}
+
+function countdown() {
+  const ov = document.getElementById("countdown");
+  const num = document.getElementById("countNum");
+  ov.classList.add("show");
+  let n = 3;
+  num.textContent = n;
+  SFX.count(n);
+  const iv = setInterval(() => {
+    n--;
+    if (n > 0) { num.textContent = n; SFX.count(n); }
+    else if (n === 0) { num.textContent = "GO!"; SFX.count(0); }
+    else { clearInterval(iv); ov.classList.remove("show"); }
+  }, 800);
+}
+
+// Square loop: 24 cells around the perimeter of a 7x7 board, clockwise from
+// the top-left, with the title in the middle. The app's own palette cycles
+// along the path; pieces are black and cream birds so they pop on every color.
+// Path cells cycle the app's UI palette; light colors get dark ink, dark get white
+const CELL_COLORS = ["#FCE883", "#a2457e", "#FF8243", "#069494", "#FFC0CB"];
+const CELL_TEXT   = ["#2b2b2b", "#ffffff", "#2b2b2b", "#ffffff", "#2b2b2b"];
+
+// Team pieces are little owls in the app palette: Robins / Herons / Finches / Doves
+const PIECES = [
+  { color: "#a2457e", face: "tufted" },
+  { color: "#069494", face: "sleepy" },
+  { color: "#FF8243", face: "crest"  },
+  { color: "#FFC0CB", face: "brow"   }
+];
+
+// --- Owl characters (ported from the design bundle), built as SVG markup ---
+function owlInner(face, color, stroke) {
+  stroke = stroke || "#2b2b2b";
+  const tuft =
+    '<polygon points="-11,-12 -5,-2 -14,-3" fill="' + color + '" stroke="' + stroke + '" stroke-width="1.8" stroke-linejoin="round"/>' +
+    '<polygon points="11,-12 5,-2 14,-3" fill="' + color + '" stroke="' + stroke + '" stroke-width="1.8" stroke-linejoin="round"/>';
+  const base =
+    '<ellipse cx="0" cy="16" rx="13" ry="3.2" fill="rgba(0,0,0,0.16)"/>' +
+    '<path d="M-5,13 l-2,4 M5,13 l2,4" stroke="#FF8243" stroke-width="2.4" stroke-linecap="round"/>' +
+    '<ellipse cx="0" cy="0" rx="13.5" ry="14" fill="' + color + '" stroke="' + stroke + '" stroke-width="2.4"/>';
+  const eyes = (r, px, py) =>
+    '<circle cx="-5.5" cy="-2" r="' + r + '" fill="#fff" stroke="' + stroke + '" stroke-width="1.6"/>' +
+    '<circle cx="5.5" cy="-2" r="' + r + '" fill="#fff" stroke="' + stroke + '" stroke-width="1.6"/>' +
+    '<circle cx="' + (-5.5 + px) + '" cy="' + (-2 + py) + '" r="2.1" fill="' + stroke + '"/>' +
+    '<circle cx="' + (5.5 + px) + '" cy="' + (-2 + py) + '" r="2.1" fill="' + stroke + '"/>';
+  const beak = '<polygon points="0,1 -3,5 3,5" fill="#FF8243" stroke="' + stroke + '" stroke-width="1.2" stroke-linejoin="round"/>';
+  if (face === "sleepy") {
+    return tuft + base +
+      '<ellipse cx="-8" cy="3" rx="2.6" ry="1.8" fill="rgba(255,120,80,0.4)"/>' +
+      '<ellipse cx="8" cy="3" rx="2.6" ry="1.8" fill="rgba(255,120,80,0.4)"/>' +
+      '<path d="M-9,-3 q3.5,4 7,0 M2,-3 q3.5,4 7,0" fill="none" stroke="' + stroke + '" stroke-width="2.2" stroke-linecap="round"/>' + beak;
+  }
+  if (face === "crest") {
+    return tuft +
+      '<path d="M-1,-13 q-3,-10 6,-11 q-4,5 0,10" fill="' + color + '" stroke="' + stroke + '" stroke-width="1.8" stroke-linejoin="round"/>' +
+      base + eyes(5, 0.5, 0) + beak;
+  }
+  if (face === "wide") {
+    return tuft + base +
+      '<path d="M-9,-9 q3,-2 6,-0.5 M3,-9.5 q3,-1.5 6,0.5" fill="none" stroke="' + stroke + '" stroke-width="1.6" stroke-linecap="round"/>' +
+      eyes(6.2, 0.4, 1.2) + beak;
+  }
+  if (face === "brow") {
+    return tuft + base + eyes(5, 0.8, 1) +
+      '<path d="M-10,-7 L-2,-4 M10,-7 L2,-4" fill="none" stroke="' + stroke + '" stroke-width="2.4" stroke-linecap="round"/>' + beak;
+  }
+  return tuft + base + eyes(5, 0.5, 0) + beak; // tufted (default)
+}
+function owlSVG(color, size, face) {
+  const h = Math.round(size * 0.92);
+  return '<svg width="' + size + '" height="' + h + '" viewBox="-28 -27 56 52" style="display:block">' +
+    '<g transform="translate(0,4)">' + owlInner(face || "tufted", color) + "</g></svg>";
+}
+// An owl drawn as an SVG <g> for embedding inside the board SVG
+function owlPawnG(color, x, y, s, face, flip) {
+  const sx = flip ? -s : s;
+  return '<g transform="translate(' + x + ',' + y + ') scale(' + sx + ',' + s + ')">' +
+    owlInner(face || "tufted", color) + "</g>";
+}
+function pawnHTML(piece) {
+  return '<span class="legend-owl">' + owlSVG(piece.color, 26, piece.face) + "</span>";
+}
+
+// Square loop: 24 cells around the perimeter of a 7x7 grid, clockwise from the
+// top-left, with the spinner in the hollow middle. The app's palette cycles
+// along the path; pieces are bright birds that pop on every cell color.
+// --- "The Long Way Home" winding board geometry ---
+const LW = IS_PHONE
+  ? { cols: 4, x0: 56,  y0: 44, dx: 89,  dy: 76,  spaceR: 16, bigR: 22, bonusR: 20, road: 30, star: 18, num: 13, lbl: 12, pawnS: 0.82, W: 380 }
+  : { cols: 5, x0: 100, y0: 70, dx: 155, dy: 112, spaceR: 26, bigR: 34, bonusR: 31, road: 48, star: 28, num: 19, lbl: 18, pawnS: 1.3,  W: 820 };
+
+// Boustrophedon (snaking) layout of TRACK_CELLS points across LW.cols columns.
+function serpentine(count, cols, x0, y0, dx, dy) {
+  const pts = [];
+  let row = 0, i = 0;
+  while (i < count) {
+    const ltr = row % 2 === 0;
+    for (let c = 0; c < cols && i < count; c++) {
+      const col = ltr ? c : cols - 1 - c;
+      pts.push({ x: x0 + col * dx, y: y0 + row * dy, i, row, ltr });
+      i++;
+    }
+    row++;
+  }
+  return pts;
+}
+const LW_PTS = serpentine(TRACK_CELLS, LW.cols, LW.x0, LW.y0, LW.dx, LW.dy);
+const LW_ROWS = Math.ceil(TRACK_CELLS / LW.cols);
+const LW_H = LW.y0 + (LW_ROWS - 1) * LW.dy + 60;
+
+// Draw the whole board as one SVG: road, spaces, arrows, labels, pawns.
+function renderTrack() {
+  const wrap = document.getElementById("boardTrack");
+  const v = LW, pts = LW_PTS;
+  const road = pts.map(p => p.x + "," + p.y).join(" ");
+  let s = '<svg viewBox="0 0 ' + v.W + " " + LW_H + '" style="display:block;font-family:\'Baloo 2\',sans-serif">';
+  s += '<polyline points="' + road + '" fill="none" stroke="#2b2b2b" stroke-width="' + v.road + '" stroke-linejoin="round" stroke-linecap="round"/>';
+  s += '<polyline points="' + road + '" fill="none" stroke="#fff7e0" stroke-width="' + (v.road - 6) + '" stroke-linejoin="round" stroke-linecap="round"/>';
+  s += '<polyline points="' + road + '" fill="none" stroke="#FCE883" stroke-width="' + (v.road / 5) + '" stroke-linejoin="round" stroke-linecap="round" stroke-dasharray="2 ' + (v.road / 2) + '" opacity="0.9"/>';
+  pts.forEach(p => {
+    const start = p.i === 0, finish = p.i === FINISH_POS, bonus = SPECIAL_CELLS.has(p.i);
+    const r = (finish || start) ? v.bigR : bonus ? v.bonusR : v.spaceR;
+    const fill = finish ? "#a2457e" : start ? "#069494" : bonus ? "#FF8243" : "#fffaf0";
+    s += '<circle cx="' + p.x + '" cy="' + p.y + '" r="' + r + '" fill="' + fill + '" stroke="#2b2b2b" stroke-width="' + (v.road / 10) + '"/>';
+    if (bonus) s += '<text x="' + p.x + '" y="' + (p.y + v.star / 3) + '" text-anchor="middle" font-size="' + v.star + '" font-weight="800" fill="#fff">★</text>';
+    else if (!start && !finish) s += '<text x="' + p.x + '" y="' + (p.y + v.num / 2.6) + '" text-anchor="middle" font-size="' + v.num + '" font-weight="700" fill="#b9b0a0">' + (p.i + 1) + "</text>";
+    if (start) s += '<text x="' + p.x + '" y="' + (p.y + v.lbl / 2.4) + '" text-anchor="middle" font-size="' + v.lbl + '" font-weight="800" fill="#fff">GO</text>';
+  });
+  // direction arrows on every other segment
+  const aS = IS_PHONE ? 1 : 1.7;
+  for (let i = 0; i < pts.length - 1; i += 2) {
+    const a = pts[i], b = pts[i + 1];
+    const ang = Math.atan2(b.y - a.y, b.x - a.x) * 180 / Math.PI;
+    s += '<g transform="translate(' + ((a.x + b.x) / 2) + "," + ((a.y + b.y) / 2) + ") rotate(" + ang + ") scale(" + aS + ')" opacity="0.85"><polygon points="-4,-5 6,0 -4,5" fill="#a2457e"/></g>';
+  }
+  s += '<text x="' + (pts[0].x - v.bigR - 4) + '" y="' + (pts[0].y - v.bigR - 8) + '" font-size="' + v.lbl + '" font-weight="800" fill="#069494">START</text>';
+  const f = pts[FINISH_POS];
+  s += '<text x="' + (f.x - v.bigR + 2) + '" y="' + (f.y + v.bigR + v.lbl + 4) + '" font-size="' + (v.lbl + 1) + '" font-weight="800" fill="#a2457e">FINISH</text>';
+  // pawns, spread horizontally when several share a space
+  teams.forEach((t, ti) => {
+    const p = pts[Math.min(t.pos, FINISH_POS)];
+    const ox = p.x + (ti - (teams.length - 1) / 2) * (v.spaceR * 0.7);
+    s += owlPawnG(PIECES[ti].color, ox, p.y - v.spaceR - 4, v.pawnS, PIECES[ti].face, !p.ltr);
+  });
+  s += "</svg>";
+  wrap.innerHTML = s;
+}
+
+// SVG prize wheel with a rotating needle (one skin, app palette).
+const WEDGE_COLS = ["#FCE883", "#FF8243", "#a2457e", "#FFC0CB", "#069494", "#FCE883"];
+function wedgePath(i) {
+  const R = 46;
+  const a0 = (i * 60 - 90) * Math.PI / 180, a1 = ((i + 1) * 60 - 90) * Math.PI / 180;
+  return "M50,50 L" + (50 + R * Math.cos(a0)).toFixed(2) + "," + (50 + R * Math.sin(a0)).toFixed(2) +
+    " A" + R + "," + R + " 0 0 1 " + (50 + R * Math.cos(a1)).toFixed(2) + "," + (50 + R * Math.sin(a1)).toFixed(2) + " Z";
+}
+function renderWheel() {
+  const area = document.getElementById("wheelArea");
+  const sz = IS_PHONE ? 112 : 150;
+  let s = '<div class="spinner' + (spinArmed ? " armed" : "") + '" id="spinner">';
+  s += '<svg width="' + sz + '" height="' + sz + '" viewBox="0 0 100 110" style="display:block;overflow:visible;font-family:\'Baloo 2\',sans-serif">';
+  s += '<circle cx="50" cy="50" r="48" fill="#2b2b2b"/>';
+  for (let i = 0; i < 6; i++) s += '<path d="' + wedgePath(i) + '" fill="' + WEDGE_COLS[i] + '" stroke="#2b2b2b" stroke-width="1.4"/>';
+  for (let i = 0; i < 6; i++) {
+    const a = (i * 60 - 60) * Math.PI / 180;
+    s += '<text x="' + (50 + 31 * Math.cos(a)).toFixed(2) + '" y="' + (50 + 31 * Math.sin(a) + 5).toFixed(2) + '" text-anchor="middle" font-weight="800" font-size="15" fill="#2b2b2b">' + (i + 1) + "</text>";
+  }
+  s += '<g id="spinNeedle" style="transform-origin:50px 50px;transform:rotate(' + needleRot + 'deg)"><polygon points="50,12 45,52 55,52" fill="#fff" stroke="#2b2b2b" stroke-width="1.6" stroke-linejoin="round"/></g>';
+  s += '<circle cx="50" cy="50" r="7" fill="#fff" stroke="#2b2b2b" stroke-width="2"/>';
+  s += '</svg><div class="spin-label">' + (spinArmed ? "tap to spin" : "") + "</div></div>";
+  area.innerHTML = s;
+  document.getElementById("spinner").onclick = spinWheel;
+}
+
+// idle spin retired with the new static needle wheel; kept as no-ops for callers
+function startIdleSpin() {}
+function stopIdleSpin() {}
+
+function renderLegend() {
+  const lg = document.getElementById("legend");
+  lg.innerHTML = "";
+  teams.forEach((t, i) => {
+    const item = document.createElement("div");
+    item.innerHTML = pawnHTML(PIECES[i]) + " " + esc(t.name);
+    item.style.display = "flex";
+    item.style.alignItems = "center";
+    item.style.gap = "6px";
+    lg.appendChild(item);
+  });
+}
+
+function renderPanel(i) {
+  const r = race[i];
+  const panel = document.getElementById("panel" + i);
+  panel.innerHTML = "";
+
+  const header = document.createElement("div");
+  header.className = "race-team";
+  header.innerHTML = "<span>" + esc(teams[i].name) + "</span><span>" + r.solved.length + "/4</span>";
+  panel.appendChild(header);
+
+  const board = document.createElement("div");
+  board.className = "board";
+  board.id = "rboard" + i;
+  // Category and words stay hidden during the race so the other team can't crib
+  r.solved.forEach(s => {
+    const rowEl = document.createElement("div");
+    rowEl.className = "solved-row" + (s.pop ? " pop-in" : "");
+    s.pop = false;
+    rowEl.style.background = DIFF_COLORS[s.diff];
+    rowEl.style.color = DIFF_TEXT[s.diff];
+    rowEl.innerHTML = '<div class="found-band">✓ Group found!</div>';
+    board.appendChild(rowEl);
+  });
+  r.tiles.forEach(w => {
+    const t = document.createElement("div");
+    t.className = "tile" + (r.selected.includes(w) ? " sel" : "");
+    t.textContent = w;
+    t.onclick = () => raceTap(i, w);
+    board.appendChild(t);
+  });
+  panel.appendChild(board);
+
+  if (!online) {
+    const skip = document.createElement("button");
+    skip.className = "skip-btn" + (skipVotes[i] ? " on" : "");
+    skip.textContent = skipVotes[i] ? "Skip: ON" : "Skip";
+    skip.onclick = () => toggleSkip(i);
+    panel.appendChild(skip);
+  }
+
+  if (Date.now() < r.lockedUntil) {
+    const overlay = document.createElement("div");
+    overlay.className = "lock-overlay";
+    overlay.innerHTML = 'Locked!<div class="count" id="lockT' + i + '">' +
+      Math.ceil((r.lockedUntil - Date.now()) / 1000) + "</div>";
+    panel.appendChild(overlay);
+  }
+}
+
+const LOCKOUT_MS = 8000; // wrong-guess penalty: frozen board while the other team plays
+
+function lockPanel(i) {
+  const r = race[i];
+  SFX.lock();
+  r.lockedUntil = Date.now() + LOCKOUT_MS;
+  renderPanel(i);
+  const iv = setInterval(() => {
+    if (Date.now() >= r.lockedUntil) {
+      clearInterval(iv);
+      renderPanel(i);
+    } else {
+      const el = document.getElementById("lockT" + i);
+      if (el) el.textContent = Math.ceil((r.lockedUntil - Date.now()) / 1000);
+    }
+  }, 200);
+}
+
+function raceTap(i, w) {
+  const r = race[i];
+  if (Date.now() < r.lockedUntil) return;
+  if (r.selected.includes(w)) {
+    r.selected = r.selected.filter(x => x !== w);
+    SFX.tap();
+    renderPanel(i);
+    return;
+  }
+  r.selected.push(w);
+  if (r.selected.length < 4) { SFX.tap(); renderPanel(i); return; }
+
+  // 4th tile auto-submits
+  const solvedCats = r.solved.map(s => s.cat);
+  const match = puzzle.find(c => !solvedCats.includes(c.cat) && c.words.every(x => r.selected.includes(x)));
+  r.selected = [];
+  if (match) {
+    SFX.correct();
+    r.solved.push({ cat: match.cat, diff: match.diff, words: match.words, pop: true });
+    r.tiles = r.tiles.filter(x => !match.words.includes(x));
+    // The board changed, so any pending skip vote is stale — cancel them all
+    if (skipVotes.some(v => v)) {
+      skipVotes = skipVotes.map(() => false);
+      race.forEach((x, j) => { if (j !== i) renderPanel(j); });
+    }
+    if (online) Net.send("progress", { n: r.solved.length });
+    if (r.solved.length === 4) {
+      renderPanel(i);
+      setTimeout(() => online ? onlineLocalFinished() : revealRound(i), 700);
+      return;
+    }
+    renderPanel(i);
+  } else {
+    SFX.wrong();
+    const board = document.getElementById("rboard" + i);
+    board.classList.add("shake");
+    setTimeout(() => { board.classList.remove("shake"); lockPanel(i); }, 350);
+  }
+}
+
+// --- Skip: each team has a switch below their board. When ALL are on, the
+// groups that NO team has solved are swapped out for fresh ones. Groups
+// solved by at least one team stay, so the other teams can still find them.
+function toggleSkip(i) {
+  skipVotes[i] = !skipVotes[i];
+  SFX.tap();
+  if (skipVotes.every(v => v)) { swapUnsolvedGroups(); return; }
+  renderPanel(i);
+}
+
+function swapUnsolvedGroups() {
+  skipVotes = skipVotes.map(() => false);
+  const solvedByAnyone = new Set(race.flatMap(r => r.solved.map(s => s.cat)));
+  const keep = puzzle.filter(c => solvedByAnyone.has(c.cat));
+  const swap = puzzle.filter(c => !solvedByAnyone.has(c.cat));
+  const fresh = swap.length && buildReplacements(keep, swap.map(c => c.diff));
+  if (!fresh) { race.forEach((r, j) => renderPanel(j)); return; } // nothing to swap, or bank exhausted
+  puzzle = keep.concat(fresh);
+  fresh.forEach(c => usedCats.add(c.cat));
+  save.dealt = save.dealt.concat(fresh.map(c => c.cat)).slice(-100);
+  persist();
+  const oldWords = swap.flatMap(c => c.words);
+  const newWords = fresh.flatMap(c => c.words);
+  race.forEach((r, i) => {
+    r.tiles = shuffle(r.tiles.filter(w => !oldWords.includes(w)).concat(newWords));
+    r.selected = [];
+    renderPanel(i);
+  });
+  SFX.correct();
+}
+
+// Pick one replacement category per requested tier, applying the same theme
+// and word-collision checks as buildPuzzle against the kept categories.
+function buildReplacements(keep, diffs) {
+  const recent = new Set(save.dealt);
+  const banned = [c => usedCats.has(c.cat) || recent.has(c.cat), c => usedCats.has(c.cat)];
+  for (let pass = 0; pass < banned.length; pass++) {
+    for (let attempt = 0; attempt < 60; attempt++) {
+      const cats = diffs.map(d => {
+        const tier = BANK.filter(c => c.diff === d && !banned[pass](c));
+        return tier[Math.floor(Math.random() * tier.length)];
+      });
+      if (cats.some(c => !c)) break; // a tier is exhausted under this filter: relax it
+      const themes = keep.concat(cats).map(c => THEMES[c.cat]).filter(Boolean);
+      if (new Set(themes).size !== themes.length) continue;
+      const fresh = cats.map(c => ({ cat: c.cat, diff: c.diff, words: shuffle(c.pool).slice(0, 4) }));
+      const all = keep.concat(fresh).flatMap(c => c.words);
+      if (new Set(all).size === 16) return fresh;
+    }
+  }
+  return null;
+}
+
+// Round over: show what the groups actually were for a few seconds first —
+// the losing team always wants to know what they missed
+function revealRound(finisherIdx) {
+  SFX.win();
+  document.getElementById("revealTitle").textContent = "🏆 " + teams[finisherIdx].name + " takes the round!";
+  const box = document.getElementById("revealRows");
+  box.innerHTML = "";
+  puzzle.slice().sort((a, b) => a.diff - b.diff).forEach(c => {
+    const row = document.createElement("div");
+    row.className = "solved-row pop-in";
+    row.style.background = DIFF_COLORS[c.diff];
+    row.style.color = DIFF_TEXT[c.diff];
+    row.innerHTML = '<div class="cat">' + esc(c.cat) + '</div><div class="words">' + c.words.join(", ") + "</div>";
+    box.appendChild(row);
+  });
+  const ov = document.getElementById("revealOverlay");
+  document.getElementById("revealContinueBtn").style.display = "";
+  ov.classList.add("show");
+  document.getElementById("revealContinueBtn").onclick = () => {
+    ov.classList.remove("show");
+    endRace(finisherIdx);
+  };
+}
+
+// Then cut back to the board, where the winner spins the wheel
+function endRace(finisherIdx) {
+  roundWinner = finisherIdx; // first team to clear their board wins the round
+  spinArmed = true;
+  showBoard("🏆 " + teams[finisherIdx].name + " wins the round — spin the wheel!", null, null);
+}
+
+function spinWheel() {
+  if (!spinArmed) return;
+  spinArmed = false;
+  const spinner = document.getElementById("spinner");
+  if (spinner) spinner.classList.remove("armed");
+  const label = spinner && spinner.querySelector(".spin-label");
+  if (label) label.textContent = "spinning…";
+  if (online) { onlineSpinTriggered(); return; }
+  const result = 1 + Math.floor(Math.random() * 6);
+  // needle points up by default; rotate so it lands on the result's wedge, plus full turns
+  spinCount += 4 + Math.floor(Math.random() * 2);
+  needleRot = (result - 1) * 60 + 30 + spinCount * 360;
+  const needle = document.getElementById("spinNeedle");
+  needle.style.transition = "transform 2.5s cubic-bezier(0.12, 0.8, 0.2, 1)";
+  void needle.getBoundingClientRect(); // reflow so the transition runs from the old angle
+  needle.style.transform = "rotate(" + needleRot + "deg)";
+  // prize-wheel ticks: fast at first, spreading out as the needle decelerates
+  let tickT = 0;
+  for (let k = 1; tickT < 2300; k++) {
+    tickT += 35 + k * k * 6.5;
+    if (tickT < 2300) setTimeout(SFX.tick, tickT);
+  }
+  needle.addEventListener("transitionend", () => {
+    SFX.correct();
+    if (label) label.textContent = "";
+    document.getElementById("boardBanner").textContent =
+      teams[roundWinner].name + " spins a " + result + "!";
+    setTimeout(() => movePawn(roundWinner, result, () => afterMove(true)), 600);
+  }, { once: true });
+}
+
+// allowBonus is false for the bonus reward hop itself, so stars can't chain
+function afterMove(allowBonus) {
+  const t = teams[roundWinner];
+  if (t.pos >= FINISH_POS) { finishRaceGame(roundWinner); return; }
+  if (allowBonus && SPECIAL_CELLS.has(t.pos)) {
+    document.getElementById("boardBanner").textContent = "⭐ " + t.name + " landed on a bonus space!";
+    setTimeout(openBonus, 800);
+    return;
+  }
+  roundNum++;
+  document.getElementById("boardBanner").textContent = t.name + " — next round coming up!";
+  setTimeout(beginRound, 1100);
+}
+
+// --- Bonus spaces: missing-number wheel (IQ-test style) for the landing team ---
+// 8-segment number wheel hiding one number, governed by a simple rule.
+// Tap the right answer before the clock runs out to earn another spin.
+function makeNumberWheel() {
+  const rnd = n => 1 + Math.floor(Math.random() * n);
+  const nums = new Array(8);
+  let rule;
+  const types = ["oppPlus", "oppSum", "oppTimes", "step", "double", "interleaved", "fib", "pairSum"];
+  const type = types[Math.floor(Math.random() * types.length)];
+  if (type === "oppPlus") {
+    const k = 1 + rnd(3); // +2..+4
+    for (let i = 0; i < 4; i++) { const a = rnd(9); nums[i] = a; nums[i + 4] = a + k; }
+    rule = "each number is its opposite plus " + k;
+  } else if (type === "oppSum") {
+    const S = 9 + rnd(6); // opposite pairs sum to 10..15
+    for (let i = 0; i < 4; i++) { const a = rnd(S - 1); nums[i] = a; nums[i + 4] = S - a; }
+    rule = "opposite numbers add up to " + S;
+  } else if (type === "oppTimes") {
+    const k = 1 + rnd(2); // x2 or x3
+    for (let i = 0; i < 4; i++) { const a = rnd(6); nums[i] = a; nums[i + 4] = a * k; }
+    rule = "each number is its opposite times " + k;
+  } else if (type === "step") {
+    const start = rnd(5), k = rnd(3);
+    for (let i = 0; i < 8; i++) nums[i] = start + i * k;
+    rule = "the numbers grow by " + k + " going around";
+  } else if (type === "double") {
+    const start = rnd(2); // 1 or 2
+    for (let i = 0; i < 8; i++) nums[i] = start * Math.pow(2, i);
+    rule = "each number doubles going around";
+  } else if (type === "interleaved") {
+    const a = rnd(4), k1 = rnd(3), b = rnd(4), k2 = rnd(3);
+    for (let i = 0; i < 8; i++) {
+      nums[i] = i % 2 === 0 ? a + (i / 2) * k1 : b + ((i - 1) / 2) * k2;
+    }
+    rule = "every other number forms its own chain (+" + k1 + " and +" + k2 + ")";
+  } else if (type === "fib") {
+    nums[0] = rnd(3); nums[1] = rnd(4);
+    for (let i = 2; i < 8; i++) nums[i] = nums[i - 1] + nums[i - 2];
+    rule = "each number is the sum of the two before it";
+  } else {
+    const S = 9 + rnd(6); // side-by-side pairs sum to 10..15
+    for (let p = 0; p < 4; p++) { const a = rnd(S - 1); nums[2 * p] = a; nums[2 * p + 1] = S - a; }
+    rule = "side-by-side pairs add up to " + S;
+  }
+  const hidden = Math.floor(Math.random() * 8);
+  const answer = nums[hidden];
+  const opts = new Set([answer]);
+  const spread = Math.max(3, Math.round(answer * 0.3)); // distractors scale with the answer
+  while (opts.size < 4) {
+    const d = answer + (Math.random() < 0.5 ? -1 : 1) * rnd(spread);
+    if (d > 0) opts.add(d);
+  }
+  return {
+    kind: "numbers",
+    graphic: { nums: nums, hidden: hidden },
+    options: shuffle(Array.from(opts).map(String)),
+    answer: String(answer),
+    prompt: "find the missing number",
+    reveal: "It was " + answer + " — " + rule + ".",
+    time: 20
+  };
+}
+
+function renderIQWheel(graphic, box) {
+  const wheel = document.createElement("div");
+  wheel.className = "iq-wheel";
+  const tints = ["#f7f4ec", "#eae5d8"];
+  wheel.style.background = "conic-gradient(" +
+    graphic.nums.map((n, i) => tints[i % 2] + " " + i * 45 + "deg " + (i + 1) * 45 + "deg").join(", ") + ")";
+  graphic.nums.forEach((n, i) => {
+    const span = document.createElement("span");
+    span.className = "num" + (i === graphic.hidden ? " missing" : "");
+    span.textContent = i === graphic.hidden ? "?" : n;
+    span.style.transform = "translate(-50%, -50%) rotate(" + (i * 45 + 22.5) + "deg) translateY(-64px) rotate(" + -(i * 45 + 22.5) + "deg)";
+    wheel.appendChild(span);
+  });
+  box.appendChild(wheel);
+}
+
+function openBonus() {
+  const q = makeNumberWheel();
+  if (!q) { afterMove(false); return; }
+  const modal = document.getElementById("bonusModal");
+  // Quad mode: rotate the challenge toward the seat of the team answering it
+  modal.querySelector(".modal").style.transform =
+    teams.length > 2 ? "rotate(" + [0, 180, 90, -90][roundWinner] + "deg)" : "";
+  const box = document.getElementById("bonusWords");
+  const timerEl = document.getElementById("bonusTimer");
+  document.getElementById("bonusPrompt").textContent =
+    teams[roundWinner].name + ": " + q.prompt + " — get it right and spin again!";
+  box.innerHTML = "";
+  const gbox = document.getElementById("bonusGraphic");
+  gbox.innerHTML = "";
+  if (q.graphic) renderIQWheel(q.graphic, gbox);
+  let settled = false;
+  let timeLeft = q.time;
+  timerEl.textContent = "⏱ " + timeLeft;
+  const tick = setInterval(() => {
+    timeLeft--;
+    timerEl.textContent = "⏱ " + timeLeft;
+    if (timeLeft > 0 && timeLeft <= 3) SFX.tick(); // urgency clicks at the end
+    if (timeLeft <= 0) settle(false, "Time's up!");
+  }, 1000);
+
+  function settle(won, headline) {
+    if (settled) return;
+    settled = true;
+    clearInterval(tick);
+    (won ? SFX.correct : SFX.wrong)();
+    timerEl.textContent = headline + " " + q.reveal;
+    setTimeout(() => {
+      modal.classList.remove("show");
+      if (won) {
+        // Reward: another spin. If THAT spin lands on a star too, the chain continues.
+        spinArmed = true;
+        showBoard("⭐ " + teams[roundWinner].name + " nailed it — spin again!", null, null);
+      } else {
+        afterMove(false);
+      }
+    }, 2200);
+  }
+
+  q.options.forEach(w => {
+    const t = document.createElement("div");
+    t.className = "tile";
+    t.textContent = w;
+    t.onclick = () => settle(w === q.answer, w === q.answer ? "Nailed it!" : "Nope —");
+    box.appendChild(t);
+  });
+  modal.classList.add("show");
+}
+
+// The pawn hops space by space so everyone can watch it travel
+function movePawn(i, steps, cb) {
+  let hop = 0;
+  const iv = setInterval(() => {
+    teams[i].pos = Math.min(teams[i].pos + 1, FINISH_POS);
+    SFX.hop(hop++);
+    renderTrack();
+    if (--steps <= 0 || teams[i].pos >= FINISH_POS) {
+      clearInterval(iv);
+      setTimeout(cb, 400);
+    }
+  }, 260);
+}
+
+// Someone reached FINISH: the game is over
+function finishRaceGame(winnerIdx) {
+  SFX.win();
+  recordWin(teams[winnerIdx].name);
+  document.getElementById("nextLevelBtn").style.display = "none";
+  document.getElementById("winnerText").textContent = "🏁 " + teams[winnerIdx].name + " reaches the finish!";
+  const fs = document.getElementById("finalScores");
+  fs.innerHTML = "";
+  teams.forEach(t => {
+    const row = document.createElement("div");
+    row.className = "final-row";
+    row.innerHTML = "<span>" + esc(t.name) + "</span><span>space " + t.pos + "</span>";
+    fs.appendChild(row);
+  });
+  // Reveal the final round's solution, which was hidden during the race
+  const reveal = document.getElementById("solutionReveal");
+  reveal.innerHTML = "";
+  puzzle.slice().sort((a, b) => a.diff - b.diff).forEach(c => {
+    const rowEl = document.createElement("div");
+    rowEl.className = "solved-row pop-in";
+    rowEl.style.background = DIFF_COLORS[c.diff];
+    rowEl.style.color = DIFF_TEXT[c.diff];
+    rowEl.innerHTML = '<div class="cat">' + esc(c.cat) + '</div><div class="words">' + c.words.join(", ") + "</div>";
+    reveal.appendChild(rowEl);
+  });
+  showScreen("endScreen");
+}
+
+// --- Dice ---
+function endGame() {
+  SFX.win();
+  const reveal = document.getElementById("solutionReveal");
+  reveal.innerHTML = "";
+  puzzle.filter(c => c.solved).sort((a, b) => a.solvedOrder - b.solvedOrder).forEach(c => {
+    const row = document.createElement("div");
+    row.className = "solved-row";
+    row.style.background = DIFF_COLORS[c.diff];
+    row.style.color = DIFF_TEXT[c.diff];
+    row.innerHTML =
+      '<div class="cat">' + esc(c.cat) + "</div>" +
+      '<div class="words">' + c.words.join(", ") + "</div>";
+    reveal.appendChild(row);
+  });
+  const nextBtn = document.getElementById("nextLevelBtn");
+  nextBtn.style.display = "none";
+  const wt = document.getElementById("winnerText");
+
+  const pk = progressKey();
+  if (pk) delete save.progress[pk];
+
+  if (gameCtx.type === "level") {
+    save.levels[gameCtx.n] = true;
+    persist();
+    wt.textContent = "✓ Level " + gameCtx.n + " complete — " + teams[0].score + " pts!";
+    if (gameCtx.n < LEVELS_TOTAL) {
+      nextBtn.style.display = "block";
+      nextBtn.onclick = () => startLevel(gameCtx.n + 1);
+    }
+  } else if (gameCtx.type === "daily") {
+    const today = dateStr();
+    if (!save.daily.completed[today]) {
+      const yesterday = dateStr(new Date(Date.now() - 86400000));
+      save.daily.streak = save.daily.completed[yesterday] ? (save.daily.streak || 0) + 1 : 1;
+      save.daily.completed[today] = true;
+      persist();
+    }
+    wt.textContent = "✓ Daily solved — " + teams[0].score + " pts! 🔥 " + save.daily.streak + "-day streak";
+  }
+  const fs = document.getElementById("finalScores");
+  fs.innerHTML = "";
+  const row = document.createElement("div");
+  row.className = "final-row";
+  row.innerHTML = "<span>" + esc(teams[0].name) + "</span><span>" + teams[0].score + "</span>";
+  fs.appendChild(row);
+  showScreen("endScreen");
+}
+
+function showQuit() { document.getElementById("quitModal").classList.add("show"); }
+function hideQuit() { document.getElementById("quitModal").classList.remove("show"); }
+
+function esc(s) {
+  return s.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+}
+
+// ===================================================================
+// PLAY ONLINE — peer-to-peer (PeerJS/WebRTC), room codes, 2 players.
+// Host-authoritative: the creator owns all randomness (puzzles, spins)
+// and progression; the joiner sends inputs and renders what host decides.
+// v1 omits the bonus mini-games and the skip-swap (kept for local play).
+// ===================================================================
+let online = null;          // { isHost, myIdx, oppIdx, myName, oppName, peer, conn, over }
+let roundWon = false;       // host: round already decided this round?
+let oppSolved = 0;          // opponent's solved-group count for the progress strip
+
+const Net = {
+  send(type, data) {
+    if (online && online.conn && online.conn.open) {
+      try { online.conn.send({ t: type, d: data || {} }); } catch (e) {}
+    }
+  }
+};
+
+function olToast(msg) {
+  const el = document.getElementById("toast");
+  el.textContent = msg;
+  el.classList.add("show");
+  clearTimeout(el._t);
+  el._t = setTimeout(() => el.classList.remove("show"), 2400);
+}
+
+function genCode() {
+  const A = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no I/O/0/1 to avoid confusion
+  let c = "";
+  for (let i = 0; i < 4; i++) c += A[Math.floor(Math.random() * A.length)];
+  return c;
+}
+function peerId(code) { return "flock-" + code.toLowerCase(); }
+
+function openOnline() {
+  showScreen("onlineScreen");
+  document.getElementById("olChoice").style.display = "";
+  document.getElementById("olStatus").style.display = "none";
+  document.getElementById("olCode").value = "";
+}
+
+function onlineTeardown() {
+  if (online) {
+    try { online.conn && online.conn.close(); } catch (e) {}
+    try { online.peer && online.peer.destroy(); } catch (e) {}
+  }
+  online = null;
+}
+function onlineLeave() { onlineTeardown(); goHome(); }
+
+function onlinePeerError(e) {
+  const type = e && e.type;
+  let msg = "Connection problem — try again.";
+  if (type === "peer-unavailable") msg = "No game found with that code.";
+  if (type === "unavailable-id") msg = "That code is in use — tap Create again.";
+  if (type === "network" || type === "server-error" || type === "socket-error") msg = "Can't reach the matchmaking server.";
+  olToast(msg);
+  const st = document.getElementById("olStatus"); if (st) st.style.display = "none";
+  const ch = document.getElementById("olChoice"); if (ch) ch.style.display = "";
+}
+
+function onlineOppLeft() {
+  if (!online || online.over) return;
+  online.over = true;
+  olToast((online.oppName || "Your friend") + " left the game");
+  setTimeout(() => { onlineTeardown(); goHome(); }, 1600);
+}
+
+function onlineCreate() {
+  if (typeof Peer === "undefined") { olToast("Online play needs an internet connection."); return; }
+  const name = document.getElementById("olName").value.trim() || "Player 1";
+  const code = genCode();
+  online = { isHost: true, myIdx: 0, oppIdx: 1, myName: name, oppName: "", peer: null, conn: null, over: false };
+  document.getElementById("olChoice").style.display = "none";
+  const st = document.getElementById("olStatus"); st.style.display = "flex";
+  document.getElementById("olCodeLabel").textContent = "Share this code:";
+  document.getElementById("olCodeBig").textContent = code;
+  document.getElementById("olSpinMsg").textContent = "Waiting for your friend to join…";
+  const peer = new Peer(peerId(code));
+  online.peer = peer;
+  peer.on("error", onlinePeerError);
+  peer.on("connection", conn => {
+    online.conn = conn;
+    conn.on("data", onData);
+    conn.on("close", onlineOppLeft);
+    conn.on("open", () => Net.send("hello", { name: online.myName }));
+  });
+}
+
+function onlineJoin() {
+  if (typeof Peer === "undefined") { olToast("Online play needs an internet connection."); return; }
+  const code = document.getElementById("olCode").value.trim().toUpperCase();
+  if (code.length < 4) { olToast("Enter the 4-letter code."); return; }
+  const name = document.getElementById("olName").value.trim() || "Player 2";
+  online = { isHost: false, myIdx: 1, oppIdx: 0, myName: name, oppName: "", peer: null, conn: null, over: false };
+  document.getElementById("olChoice").style.display = "none";
+  const st = document.getElementById("olStatus"); st.style.display = "flex";
+  document.getElementById("olCodeLabel").textContent = "Joining game…";
+  document.getElementById("olCodeBig").textContent = code;
+  document.getElementById("olSpinMsg").textContent = "Connecting…";
+  const peer = new Peer();
+  online.peer = peer;
+  peer.on("error", onlinePeerError);
+  peer.on("open", () => {
+    const conn = peer.connect(peerId(code), { reliable: true });
+    online.conn = conn;
+    conn.on("data", onData);
+    conn.on("close", onlineOppLeft);
+    conn.on("open", () => Net.send("hello", { name: online.myName }));
+  });
+}
+
+// Host deals a fresh puzzle, avoiding categories already used this game
+function onlineDealPuzzle() {
+  let pz = null;
+  for (let a = 0; a < 60 && !pz; a++) { const c = buildPuzzle(); if (c && !c.some(x => usedCats.has(x.cat))) pz = c; }
+  if (!pz) { usedCats.clear(); pz = buildPuzzle(); }
+  pz.forEach(c => usedCats.add(c.cat));
+  return pz;
+}
+
+function onlineHostStart() {
+  teams = [{ name: online.myName, score: 0, pos: 0 }, { name: online.oppName, score: 0, pos: 0 }];
+  gameCtx = { type: "online" };
+  roundNum = 1; usedCats = new Set(); spinCount = 0; needleRot = 90;
+  const pz = onlineDealPuzzle();
+  Net.send("start", { names: teams.map(t => t.name), puzzle: pz, roundNum: 1 });
+  beginOnlineRound(pz);
+}
+
+function onData(msg) {
+  if (!online) return;
+  const t = msg.t, d = msg.d || {};
+  if (t === "hello") {
+    online.oppName = d.name || (online.isHost ? "Player 2" : "Player 1");
+    if (online.isHost) onlineHostStart();
+    return;
+  }
+  if (t === "start") { // joiner: host has dealt the first puzzle
+    teams = d.names.map(n => ({ name: n, score: 0, pos: 0 }));
+    gameCtx = { type: "online" };
+    roundNum = d.roundNum || 1; spinCount = 0; needleRot = 90;
+    beginOnlineRound(d.puzzle);
+    return;
+  }
+  if (t === "progress") { oppSolved = d.n || 0; renderOppStrip(); return; }
+  if (t === "finished") { if (online.isHost) onlineResolveWinner(online.oppIdx); return; }
+  if (t === "roundWon") { onlineBeginReveal(d.w); return; }
+  if (t === "requestSpin") {
+    if (online.isHost) { const result = 1 + Math.floor(Math.random() * 6); Net.send("spin", { result }); onlineAnimateSpin(result); }
+    return;
+  }
+  if (t === "spin") { onlineAnimateSpin(d.result); return; }
+  if (t === "round") { // joiner: next round
+    if (d.pos) teams.forEach((tm, k) => tm.pos = d.pos[k]);
+    roundNum = d.roundNum;
+    beginOnlineRound(d.puzzle);
+    return;
+  }
+  if (t === "gameover") {
+    if (d.pos) teams.forEach((tm, k) => tm.pos = d.pos[k]);
+    online.over = true;
+    finishRaceGame(d.w);
+    return;
+  }
+}
+
+function beginOnlineRound(pz) {
+  puzzle = pz;
+  roundWon = false; oppSolved = 0; spinArmed = false;
+  skipVotes = teams.map(() => false);
+  const me = online.myIdx, opp = online.oppIdx;
+  race = [];
+  race[me] = { tiles: shuffle(puzzle.flatMap(c => c.words)), selected: [], solved: [], lockedUntil: 0 };
+  race[opp] = { tiles: [], selected: [], solved: [], lockedUntil: 0 };
+  const row = document.getElementById("raceRow");
+  row.className = "race-row online";
+  row.innerHTML = "";
+  const strip = document.createElement("div");
+  strip.className = "opp-strip"; strip.id = "oppStrip";
+  row.appendChild(strip);
+  row.appendChild(makePanel(me));
+  showScreen("raceScreen");
+  renderPanel(me);
+  renderOppStrip();
+  countdown();
+}
+
+function renderOppStrip() {
+  const s = document.getElementById("oppStrip");
+  if (!s) return;
+  let pips = "";
+  for (let k = 0; k < 4; k++) pips += '<span class="pip' + (k < oppSolved ? " on" : "") + '"></span>';
+  s.innerHTML = '<span class="opp-name">' + esc(online.oppName) + " &nbsp;" + oppSolved +
+    '/4</span><span class="opp-pips">' + pips + "</span>";
+}
+
+// I cleared all 4 groups on my board
+function onlineLocalFinished() {
+  if (online.isHost) onlineResolveWinner(online.myIdx);
+  else Net.send("finished", {});
+}
+
+// Host decides the round winner (first finish it observes wins)
+function onlineResolveWinner(winnerIdx) {
+  if (roundWon) return;
+  roundWon = true;
+  Net.send("roundWon", { w: winnerIdx });
+  onlineBeginReveal(winnerIdx);
+}
+
+function onlineBeginReveal(winnerIdx) {
+  SFX.win();
+  document.getElementById("revealTitle").textContent =
+    "🏆 " + (winnerIdx === online.myIdx ? "You take the round!" : esc(teams[winnerIdx].name) + " takes the round!");
+  const box = document.getElementById("revealRows");
+  box.innerHTML = "";
+  puzzle.slice().sort((a, b) => a.diff - b.diff).forEach(c => {
+    const row = document.createElement("div");
+    row.className = "solved-row pop-in";
+    row.style.background = DIFF_COLORS[c.diff];
+    row.style.color = DIFF_TEXT[c.diff];
+    row.innerHTML = '<div class="cat">' + esc(c.cat) + '</div><div class="words">' + c.words.join(", ") + "</div>";
+    box.appendChild(row);
+  });
+  // auto-advance so both screens stay in step (no manual Continue online)
+  document.getElementById("revealContinueBtn").style.display = "none";
+  const ov = document.getElementById("revealOverlay");
+  ov.classList.add("show");
+  setTimeout(() => { ov.classList.remove("show"); onlineToBoard(winnerIdx); }, 4500);
+}
+
+function onlineToBoard(winnerIdx) {
+  roundWinner = winnerIdx;
+  spinArmed = (winnerIdx === online.myIdx);
+  const msg = winnerIdx === online.myIdx
+    ? "You won the round — spin the wheel!"
+    : esc(teams[winnerIdx].name) + " won — watch them spin";
+  showBoard(msg, null, null);
+}
+
+// Winner tapped the wheel: host generates the result, joiner asks host for it
+function onlineSpinTriggered() {
+  if (online.isHost) {
+    const result = 1 + Math.floor(Math.random() * 6);
+    Net.send("spin", { result });
+    onlineAnimateSpin(result);
+  } else {
+    Net.send("requestSpin", {});
+  }
+}
+
+// Both clients animate to the same host-chosen result, then move the pawn
+function onlineAnimateSpin(result) {
+  const spinner = document.getElementById("spinner");
+  if (spinner) spinner.classList.remove("armed");
+  const label = spinner && spinner.querySelector(".spin-label");
+  if (label) label.textContent = "spinning…";
+  spinCount += 4 + Math.floor(Math.random() * 2);
+  needleRot = (result - 1) * 60 + 30 + spinCount * 360;
+  const needle = document.getElementById("spinNeedle");
+  if (!needle) { movePawn(roundWinner, result, onlineAfterMove); return; }
+  needle.style.transition = "transform 2.5s cubic-bezier(0.12, 0.8, 0.2, 1)";
+  void needle.getBoundingClientRect();
+  needle.style.transform = "rotate(" + needleRot + "deg)";
+  let tickT = 0;
+  for (let k = 1; tickT < 2300; k++) { tickT += 35 + k * k * 6.5; if (tickT < 2300) setTimeout(SFX.tick, tickT); }
+  needle.addEventListener("transitionend", () => {
+    SFX.correct();
+    if (label) label.textContent = "";
+    document.getElementById("boardBanner").textContent = teams[roundWinner].name + " spins a " + result + "!";
+    setTimeout(() => movePawn(roundWinner, result, onlineAfterMove), 600);
+  }, { once: true });
+}
+
+// After the pawn lands, only the host advances the game state
+function onlineAfterMove() {
+  if (!online || !online.isHost) return;
+  if (teams[roundWinner].pos >= FINISH_POS) {
+    online.over = true;
+    Net.send("gameover", { w: roundWinner, pos: teams.map(t => t.pos) });
+    finishRaceGame(roundWinner);
+    return;
+  }
+  roundNum++;
+  const pz = onlineDealPuzzle();
+  Net.send("round", { puzzle: pz, roundNum: roundNum, pos: teams.map(t => t.pos) });
+  beginOnlineRound(pz);
+}
+
+renderHome();
+</script>
+</body>
+</html>
