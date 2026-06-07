@@ -241,12 +241,14 @@
   .lv-owl { position: absolute; top: -30px; left: 50%; transform: translateX(-50%); }
 
   /* Gameplay */
-  .game-wrap { display: flex; flex-direction: column; flex: 1; width: 100%; max-width: 560px; padding: 4px 16px 16px; }
+  .game-wrap { display: flex; flex-direction: column; flex: 1; justify-content: center; width: 100%; max-width: 600px; padding: 4px 6px 16px; }
   .game-score { font-weight: 800; font-size: 1.2rem; }
-  .game-sub { text-align: center; font-weight: 700; font-size: 0.85rem; color: var(--mute); padding: 2px 0 8px; }
-  #gameScreen.active { min-height: 100dvh; justify-content: flex-start; }
-  .game-wrap .board { margin-top: 2px; }
-  .game-wrap .controls { margin-top: 14px; justify-content: center; }
+  .game-sub { text-align: center; font-weight: 700; font-size: 1rem; color: var(--mute); padding: 2px 0 10px; }
+  #gameScreen.active { min-height: 100dvh; justify-content: flex-start; padding: 14px 10px; }
+  .game-wrap .board { margin-top: 2px; gap: 12px; }
+  .game-wrap .tile { border-radius: 16px; padding: 6px; font-size: clamp(0.95rem, 3.6vw, 1.45rem); }
+  .game-wrap .controls { margin-top: 18px; justify-content: center; }
+  .game-wrap .ctrl-btn { padding: 15px 26px; font-size: 1.15rem; }
   .ctrl-icon { display: inline-flex; align-items: center; justify-content: center; }
   .cell {
     aspect-ratio: 1; border-radius: 5px;
@@ -526,6 +528,7 @@
     <button class="big-btn btn-daily" style="width:100%;display:flex;justify-content:center;" onclick="startDaily()">Play today’s puzzle</button>
     <div class="daily-foot">Solve before midnight to keep your streak</div>
   </div>
+  <button class="menu-btn" onclick="goHome()">← Back</button>
 </div>
 
 <!-- LEVELS -->
@@ -641,6 +644,7 @@
     </div>
     <button class="big-btn" id="continueBtn" style="display:none;margin-top:14px;align-self:center" onclick="endGame()">See Results →</button>
   </div>
+  <button class="menu-btn" onclick="goHome()">← Back</button>
 </div>
 
 <!-- GAME OVER -->
@@ -1205,7 +1209,7 @@ function startGame() {
 // gameCtx tracks what kind of game is running so endGame knows what to record
 let gameCtx = { type: "multi" };
 
-const LEVELS_TOTAL = 1000, PAGE_SIZE = 50;
+const LEVELS_TOTAL = 1000, PAGE_SIZE = IS_PHONE ? 30 : 50;
 let levelPage = 0;
 
 function startLevel(n) {
@@ -1795,9 +1799,10 @@ function renderWheel() {
   for (let i = 0; i < 6; i++) s += '<path d="' + wedgePath(i) + '" fill="' + WEDGE_COLS[i] + '" stroke="#2b2b2b" stroke-width="1.4"/>';
   for (let i = 0; i < 6; i++) {
     const a = (i * 60 - 60) * Math.PI / 180;
-    s += '<text x="' + (50 + 31 * Math.cos(a)).toFixed(2) + '" y="' + (50 + 31 * Math.sin(a) + 5).toFixed(2) + '" text-anchor="middle" font-weight="800" font-size="15" fill="#2b2b2b">' + (i + 1) + "</text>";
+    s += '<text x="' + (50 + 38 * Math.cos(a)).toFixed(2) + '" y="' + (50 + 38 * Math.sin(a) + 5).toFixed(2) + '" text-anchor="middle" font-weight="800" font-size="14" fill="#2b2b2b">' + (i + 1) + "</text>";
   }
-  s += '<g id="spinNeedle" style="transform-origin:50px 50px;transform:rotate(' + needleRot + 'deg)"><polygon points="50,12 45,52 55,52" fill="#fff" stroke="#2b2b2b" stroke-width="1.6" stroke-linejoin="round"/></g>';
+  // short pointer that sits inside the number ring so it never covers the digits
+  s += '<g id="spinNeedle" style="transform-origin:50px 50px;transform:rotate(' + needleRot + 'deg)"><polygon points="50,21 46,50 54,50" fill="#fff" stroke="#2b2b2b" stroke-width="1.6" stroke-linejoin="round"/></g>';
   s += '<circle cx="50" cy="50" r="7" fill="#fff" stroke="#2b2b2b" stroke-width="2"/>';
   s += '</svg><div class="spin-label">' + (spinArmed ? "tap to spin" : "") + "</div></div>";
   area.innerHTML = s;
@@ -2023,7 +2028,8 @@ function spinWheel() {
   const result = 1 + Math.floor(Math.random() * 6);
   // needle points up by default; rotate so it lands on the result's wedge, plus full turns
   spinCount += 4 + Math.floor(Math.random() * 2);
-  needleRot = (result - 1) * 60 + 30 + spinCount * 360;
+  // land off-center within the wedge (±20° of its 60° span) so it feels organic
+  needleRot = (result - 1) * 60 + 30 + (Math.random() * 40 - 20) + spinCount * 360;
   const needle = document.getElementById("spinNeedle");
   needle.style.transition = "transform 2.5s cubic-bezier(0.12, 0.8, 0.2, 1)";
   void needle.getBoundingClientRect(); // reflow so the transition runs from the old angle
@@ -2048,8 +2054,9 @@ function afterMove(allowBonus) {
   const t = teams[roundWinner];
   if (t.pos >= FINISH_POS) { finishRaceGame(roundWinner); return; }
   if (allowBonus && SPECIAL_CELLS.has(t.pos)) {
-    document.getElementById("boardBanner").textContent = "⭐ " + t.name + " landed on a bonus space!";
-    setTimeout(openBonus, 800);
+    document.getElementById("boardBanner").textContent = "⭐ " + t.name + " landed on a bonus space — spin again!";
+    spinArmed = true;
+    setTimeout(() => showBoard("⭐ " + t.name + " landed on a bonus space — spin again!", null, null), 800);
     return;
   }
   roundNum++;
@@ -2414,12 +2421,24 @@ function onlineJoin() {
   });
 }
 
-// Host deals a fresh puzzle, avoiding categories already used this game
+// Host deals a fresh puzzle. Never repeat a category from this game, and
+// avoid the last 100 dealt across all past games on this device.
 function onlineDealPuzzle() {
+  const recent = new Set(save.dealt);
   let pz = null;
-  for (let a = 0; a < 60 && !pz; a++) { const c = buildPuzzle(); if (c && !c.some(x => usedCats.has(x.cat))) pz = c; }
+  for (let a = 0; a < 60 && !pz; a++) {
+    const c = buildPuzzle();
+    if (c && !c.some(x => usedCats.has(x.cat) || recent.has(x.cat))) pz = c;
+  }
+  // Bank too depleted for both filters: drop the cross-session one, keep the in-game guarantee
+  for (let a = 0; a < 40 && !pz; a++) {
+    const c = buildPuzzle();
+    if (c && !c.some(x => usedCats.has(x.cat))) pz = c;
+  }
   if (!pz) { usedCats.clear(); pz = buildPuzzle(); }
   pz.forEach(c => usedCats.add(c.cat));
+  save.dealt = save.dealt.concat(pz.map(c => c.cat)).slice(-100);
+  persist();
   return pz;
 }
 
@@ -2476,6 +2495,8 @@ function onData(msg) {
 }
 
 function beginOnlineRound(pz) {
+  const rev = document.getElementById("revealOverlay");
+  if (rev) rev.classList.remove("show"); // never leave the result overlay up into a new round
   puzzle = pz;
   roundWon = false; oppSolved = 0; spinArmed = false;
   skipVotes = teams.map(() => false);
@@ -2542,20 +2563,23 @@ function onlineBeginReveal(winnerIdx) {
     row.innerHTML = '<div class="cat">' + esc(c.cat) + '</div><div class="words">' + c.words.join(", ") + "</div>";
     box.appendChild(row);
   });
-  // auto-advance so both screens stay in step (no manual Continue online)
-  document.getElementById("revealContinueBtn").style.display = "none";
+  roundWinner = winnerIdx; // known now so the spin safety-net can advance a player still reading
+  // manual Continue: either player advances when ready (safety net keeps them in step if they don't)
+  const cont = document.getElementById("revealContinueBtn");
+  cont.style.display = "";
   const ov = document.getElementById("revealOverlay");
   ov.classList.add("show");
-  setTimeout(() => { ov.classList.remove("show"); onlineToBoard(winnerIdx); }, 4500);
+  cont.onclick = () => { ov.classList.remove("show"); onlineToBoard(winnerIdx); };
 }
 
 function onlineToBoard(winnerIdx) {
   roundWinner = winnerIdx;
-  spinArmed = (winnerIdx === online.myIdx);
+  spinArmed = false; // lock the wheel briefly so a slower reader isn't cut off
   const msg = winnerIdx === online.myIdx
     ? "You won the round — spin the wheel!"
     : esc(teams[winnerIdx].name) + " won — watch them spin";
   showBoard(msg, null, null);
+  if (winnerIdx === online.myIdx) setTimeout(() => { spinArmed = true; renderWheel(); }, 3000);
 }
 
 // Winner tapped the wheel: host generates the result, joiner asks host for it
@@ -2571,12 +2595,16 @@ function onlineSpinTriggered() {
 
 // Both clients animate to the same host-chosen result, then move the pawn
 function onlineAnimateSpin(result) {
+  // safety net: if a player hasn't hit Continue yet, pull them onto the board so they stay in step
+  const rev = document.getElementById("revealOverlay");
+  if (rev && rev.classList.contains("show")) { rev.classList.remove("show"); onlineToBoard(roundWinner); }
   const spinner = document.getElementById("spinner");
   if (spinner) spinner.classList.remove("armed");
   const label = spinner && spinner.querySelector(".spin-label");
   if (label) label.textContent = "spinning…";
   spinCount += 4 + Math.floor(Math.random() * 2);
-  needleRot = (result - 1) * 60 + 30 + spinCount * 360;
+  // land off-center within the wedge (±20° of its 60° span) so it feels organic
+  needleRot = (result - 1) * 60 + 30 + (Math.random() * 40 - 20) + spinCount * 360;
   const needle = document.getElementById("spinNeedle");
   if (!needle) { movePawn(roundWinner, result, onlineAfterMove); return; }
   needle.style.transition = "transform 2.5s cubic-bezier(0.12, 0.8, 0.2, 1)";
