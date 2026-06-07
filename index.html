@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <title>Flock</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -15,7 +15,8 @@
     --orange:#FF8243; --pink:#FFC0CB; --yellow:#FCE883; --gold:#E2A32D;
     --mute:#8a8478; --line:#d8d1c2;
   }
-  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+  html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
   html, body { height: 100%; }
   body {
     font-family: "Baloo 2", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -140,7 +141,7 @@
     font-weight: 800; font-size: 0.95rem;
   }
   .race-panel .board { gap: 6px; }
-  .race-panel .tile { aspect-ratio: 2 / 1; font-size: clamp(0.55rem, 1.5vw, 0.95rem); }
+  .race-panel .tile { font-size: clamp(0.55rem, 1.5vw, 0.95rem); }
   .race-panel .solved-row { padding: 8px; }
   /* Board game track: square loop on a dark board, Pictionary-style pastels */
   .track {
@@ -318,7 +319,9 @@
   .race-row.face-off { flex-direction: column; align-items: center; gap: 24px; flex: 1; justify-content: space-between; }
   /* Content-sized, not flex-grown, so space-between pushes each board to its
      own edge of the table instead of bunching them in the middle */
-  .race-row.face-off .race-panel { flex: 0 0 auto; width: 100%; max-width: 620px; }
+  /* Square tiles make each board roughly as tall as it is wide, so cap the width
+     by viewport height so both boards still fit stacked on a tablet */
+  .race-row.face-off .race-panel { flex: 0 0 auto; width: 100%; max-width: min(620px, 40vh); }
   .race-panel.flipped { transform: rotate(180deg); }
 
   /* Desktop (mouse, not a tablet on a table): the rotate-toward-the-player table
@@ -328,6 +331,10 @@
     .race-row.face-off { flex: 0 1 auto; justify-content: center; gap: 28px; }
     .race-panel.flipped { transform: none; }
   }
+
+  /* 3-4 player card-table keeps wide rectangle tiles — square boards can't fit
+     four seats rotated around one tablet */
+  .race-row.quad .tile { aspect-ratio: 2 / 1; }
 
   /* Card-table face-off for 3-4 teams: upside-down board across the top,
      upright board across the bottom, and the left/right teams' boards turned
@@ -411,6 +418,8 @@
   /* Online race: my board centered with the opponent's progress on top */
   .race-row.online { flex-direction: column; align-items: center; gap: 16px; }
   .race-row.online .race-panel { width: 100%; max-width: 560px; }
+  /* Online shows a single board per player, so use square tiles like solo play */
+  .race-row.online .tile { aspect-ratio: 1 / 1; font-size: clamp(0.7rem, 2.2vw, 1.05rem); }
   .opp-strip {
     width: 100%; max-width: 560px; display: flex; align-items: center; justify-content: space-between;
     background: var(--paper); border: 2.5px solid var(--ink); border-radius: 16px; padding: 10px 16px;
@@ -2438,7 +2447,13 @@ function onData(msg) {
     beginOnlineRound(d.puzzle);
     return;
   }
-  if (t === "progress") { oppSolved = d.n || 0; renderOppStrip(); return; }
+  if (t === "progress") {
+    const prev = oppSolved;
+    oppSolved = d.n || 0;
+    renderOppStrip();
+    if (oppSolved > prev && oppSolved < 4) oppScoredAlert();
+    return;
+  }
   if (t === "finished") { if (online.isHost) onlineResolveWinner(online.oppIdx); return; }
   if (t === "roundWon") { onlineBeginReveal(d.w); return; }
   if (t === "requestSpin") {
@@ -2488,6 +2503,15 @@ function renderOppStrip() {
   for (let k = 0; k < 4; k++) pips += '<span class="pip' + (k < oppSolved ? " on" : "") + '"></span>';
   s.innerHTML = '<span class="opp-name">' + esc(online.oppName) + " &nbsp;" + oppSolved +
     '/4</span><span class="opp-pips">' + pips + "</span>";
+}
+
+// Opponent just found a group — make the player sweat: toast, flash, tense sting
+function oppScoredAlert() {
+  olToast("⚡ " + online.oppName + " found a group — " + oppSolved + "/4!");
+  beep(392, 0.12, "sawtooth", 0.18);
+  beep(294, 0.22, "sawtooth", 0.18, 0.1);
+  const s = document.getElementById("oppStrip");
+  if (s) { s.classList.remove("alert"); void s.offsetWidth; s.classList.add("alert"); }
 }
 
 // I cleared all 4 groups on my board
